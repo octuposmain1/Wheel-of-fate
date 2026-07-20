@@ -4,7 +4,7 @@
 
 import { store } from '../utils/store.js';
 import { SpinWheel } from '../components/spinWheel.js';
-import { getTierById, getTierIntensity, isDramaticTier, hexToRgba, renderRpgStatsSheet, proceduralFallbackPowerSystem } from '../utils/rarity.js';
+import { getTierById, getTierIntensity, isDramaticTier, hexToRgba, renderRpgStatsSheet, proceduralFallbackPowerSystem, getTiersForWheels } from '../utils/rarity.js';
 import { showToast, openModal, closeModal } from '../components/toast.js';
 import { router } from '../utils/router.js';
 import { api } from '../utils/api.js';
@@ -23,6 +23,8 @@ let sessionState = {
   isSpinning: false,
   isDone: false,
   isLoadingBackstory: false,
+  skipAnimation: localStorage.getItem('skip_wheel_animation') === '1',
+  globalWheelsInitialized: false,
 };
 let unsubscribeStore = null;
 
@@ -54,6 +56,11 @@ function _updateSpinPage(container) {
 
     const groupSel = sessionState.folderWheelSelections[selectedGroup.id];
     sessionState.selectedWheelIds = (selectedGroup.wheelIds || []).filter(wId => groupSel[wId] !== false);
+  } else {
+    if (!sessionState.globalWheelsInitialized) {
+      sessionState.selectedWheelIds = state.wheels.map(w => w.id);
+      sessionState.globalWheelsInitialized = true;
+    }
   }
 
   _render(container, state);
@@ -70,7 +77,8 @@ export function unmountSpinPage() {
 
 // ─── Full Re-render ────────────────────────────────────────────
 function _render(container, state) {
-  const { wheels, rarityTiers: tiers } = state;
+  const { wheels } = state;
+  const tiers = getTiersForWheels(sessionState.selectedWheelIds, state);
   const selectedWheels = sessionState.selectedWheelIds
     .map(id => wheels.find(w => w.id === id))
     .filter(Boolean);
@@ -240,6 +248,12 @@ function _render(container, state) {
           </div>
         ` : ''}
 
+        <!-- Skip Animation Option -->
+        <label style="font-size:12px; color:rgba(255,255,255,0.6); display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:8px; user-select:none;">
+          <input type="checkbox" id="skip-animation-toggle" ${sessionState.skipAnimation ? 'checked' : ''} style="cursor:pointer;" />
+          <span>⚡ Skip Spin Animation</span>
+        </label>
+
         <!-- Action Buttons -->
         <div style="display:flex; flex-direction:column; gap:12px;">
           ${!sessionState.isDone ? `
@@ -334,9 +348,10 @@ function _mountWheel(wheel) {
   const vpWidth = viewport?.offsetWidth ?? 400;
   const size = Math.min(vpWidth - 40, 320);
 
+  const state = store.getState();
   activeWheelInstance = new SpinWheel(canvasContainer, wheel, {
     size,
-    tiers: store.getState().rarityTiers,
+    tiers: getTiersForWheels(sessionState.selectedWheelIds, state),
     onLand: () => {},
   });
 }
@@ -349,6 +364,13 @@ function _bindEvents(container, state) {
   container.querySelectorAll('[data-wheel-toggle]').forEach(checkbox => {
     checkbox.onchange = () => {
       const wid = checkbox.dataset.wheelToggle;
+      const grpId = sessionState.selectedGroupId;
+      if (grpId) {
+        if (!sessionState.folderWheelSelections[grpId]) {
+          sessionState.folderWheelSelections[grpId] = {};
+        }
+        sessionState.folderWheelSelections[grpId][wid] = checkbox.checked;
+      }
       if (checkbox.checked) {
         if (!sessionState.selectedWheelIds.includes(wid)) {
           sessionState.selectedWheelIds = [...sessionState.selectedWheelIds, wid];
@@ -366,6 +388,7 @@ function _bindEvents(container, state) {
     folderSelect.onchange = () => {
       sessionState.selectedGroupId = folderSelect.value;
       sessionState.currentIndex = 0;
+      sessionState.globalWheelsInitialized = false;
       _updateSpinPage(container);
     };
   }
@@ -389,6 +412,15 @@ function _bindEvents(container, state) {
   const spinBtn = container.querySelector('#spin-btn');
   if (spinBtn) spinBtn.onclick = () => _doSpin(container);
 
+  // Skip animation toggle
+  const skipToggle = container.querySelector('#skip-animation-toggle');
+  if (skipToggle) {
+    skipToggle.onchange = () => {
+      sessionState.skipAnimation = skipToggle.checked;
+      localStorage.setItem('skip_wheel_animation', sessionState.skipAnimation ? '1' : '0');
+    };
+  }
+
   // Auto-spin
   const autoSpinBtn = container.querySelector('#auto-spin-btn');
   if (autoSpinBtn) autoSpinBtn.onclick = () => _doAutoSpin(container);
@@ -400,7 +432,7 @@ function _bindEvents(container, state) {
       if (activeWheelInstance) { activeWheelInstance.destroy(); activeWheelInstance = null; }
       activeCardTab = 'traits';
       sessionState = {
-        selectedWheelIds: state.wheels.map(w => w.id),
+        ...sessionState,
         currentIndex: 0,
         lockedTraits: [],
         backstory: null,
@@ -408,6 +440,7 @@ function _bindEvents(container, state) {
         isSpinning: false,
         isDone: false,
         isLoadingBackstory: false,
+        globalWheelsInitialized: false,
       };
       _updateSpinPage(container);
     };
@@ -464,11 +497,13 @@ async function _doSpin(container) {
   _updateSpinBtn(true);
 
   try {
-    const { trait } = await activeWheelInstance.spin();
+    const { trait } = await activeWheelInstance.spin(null, sessionState.skipAnimation);
 
     // Hold on the landed wheel for a beat before advancing the UI, so
     // there's actually time to read what it landed on.
-    await sleep(900);
+    if (!sessionState.skipAnimation) {
+      await sleep(900);
+    }
 
     // Lock the trait
     sessionState.lockedTraits.push({ wheelId: currentWheel.id, trait });
@@ -506,7 +541,7 @@ async function _doAutoSpin(container) {
     if (!currentWheel?.traits?.length) { sessionState.currentIndex++; continue; }
 
     await _doSpin(container);
-    if (!sessionState.isDone) {
+    if (!sessionState.isDone && !sessionState.skipAnimation) {
       // Brief pause between wheels for suspense
       await sleep(800);
     }
@@ -542,7 +577,7 @@ Return a raw, unformatted JSON object matching this schema (do NOT wrap in markd
 {
   "backstory": "An epic, high-quality 3-sentence narrative weaving their traits and fatal weakness.",
   "powerSystem": {
-    "systemName": "E.g. Nen, Chakra, Stand, Ki, Mana, or a thematic power system name",
+    "systemName": "A unique, creative power system name derived directly from the character's positive traits (do NOT use generic anime names like Ki, Nen, Chakra, Stand, Mana)",
     "classOrType": "E.g. wind manipulator, enhancer, conjurer, elementalist",
     "synergyRating": "${precalculated.synergyRating}",
     "stats": {

@@ -199,7 +199,7 @@ export class SpinWheel {
       const dramatic = isDramaticTier(this.tiers, seg.rarity);
 
       // Use rarity color tint for dramatic (rarest) tiers, palette for common, dark grey for disabled
-      let fillColor = dramatic ? rColor : baseColor;
+      let fillColor = rColor;
       if (isDisabled) {
         fillColor = '#3a3a3c';
       }
@@ -344,13 +344,12 @@ export class SpinWheel {
    * animation starts, then animates to land on that segment.
    * @returns {Promise<{trait, index}>}
    */
-  spin(forcedWinnerIndex) {
+  spin(forcedWinnerIndex = null, skipAnimation = false) {
     return new Promise((resolve) => {
       if (this.isSpinning) return;
       if (!this.wheel.traits?.length) return;
 
       this.isSpinning = true;
-      playWhoosh();
 
       // 1. Pick winner before animation
       let winnerIndex = typeof forcedWinnerIndex === 'number' && forcedWinnerIndex >= 0 && forcedWinnerIndex < this.wheel.traits.length
@@ -376,6 +375,18 @@ export class SpinWheel {
       // Randomize offset within 80% of the slice width so it never lands right on a border line
       const landingOffset = (Math.random() - 0.5) * segArc * 0.8;
       const segmentLandingAngle = cumulativeAngle + segArc * 0.5 + landingOffset;
+
+      if (skipAnimation) {
+        const targetRotation = -segmentLandingAngle;
+        this.currentAngle = targetRotation;
+        this._drawWheel(this.currentAngle);
+        this.isSpinning = false;
+        playLock(winner.rarity, this.tiers);
+        resolve({ trait: winner, index: winnerIndex });
+        return;
+      }
+
+      playWhoosh();
 
       const extraFullTurns = 8 + Math.floor(Math.random() * 7); // 8-14 whole turns
       const fullSpins = extraFullTurns * Math.PI * 2;

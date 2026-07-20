@@ -69,15 +69,6 @@ store.init().then(() => {
   router.init();
 });
 
-// ─── Keyboard Shortcut: B = Builder, S = Spin, H = Home ──────
-document.addEventListener('keydown', (e) => {
-  if (e.target.matches('input, textarea, select')) return;
-  if (e.key === 'b' || e.key === 'B') router.navigate('/builder');
-  if (e.key === 's' || e.key === 'S') router.navigate('/spin');
-  if (e.key === 'h' || e.key === 'H') router.navigate('/');
-  if (e.key === 'c' || e.key === 'C') router.navigate('/characters');
-  if (e.key === 't' || e.key === 'T') router.navigate('/tournament');
-});
 
 // ─── OpenAI Key Shortcut ──────────────────────────────────────
 // Press ? to open API key setup

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { store } from '../utils/store.js';
-import { getPowerScore, isNegativeWheel } from '../utils/rarity.js';
+import { getPowerScore, isNegativeWheel, getTierIntensity, getTierById, proceduralFallbackPowerSystem, getTiersForCharacter } from '../utils/rarity.js';
 import { showToast, openModal, closeModal, showAiLoadingModal } from '../components/toast.js';
 import { requireApiKey, callAiChat, cleanAndParseJson } from '../utils/ai.js';
 import { router } from '../utils/router.js';
@@ -50,8 +50,9 @@ function computePower(character) {
   if (character.powerSystem?.stats?.combatPower) {
     return character.powerSystem.stats.combatPower;
   }
-  const tiers = store.getState().rarityTiers;
-  const wheels = store.getState().wheels;
+  const state = store.getState();
+  const tiers = getTiersForCharacter(character, state);
+  const wheels = state.wheels;
   const sys = proceduralFallbackPowerSystem(character.traits, tiers, wheels);
   return sys.stats.combatPower;
 }
@@ -60,8 +61,9 @@ function computeRawPower(character) {
   if (character.powerSystem?.rawPower) {
     return character.powerSystem.rawPower;
   }
-  const tiers = store.getState().rarityTiers;
-  const wheels = store.getState().wheels;
+  const state = store.getState();
+  const tiers = getTiersForCharacter(character, state);
+  const wheels = state.wheels;
   const sys = proceduralFallbackPowerSystem(character.traits, tiers, wheels);
   return sys.rawPower;
 }
@@ -115,7 +117,8 @@ function generateLocalClashSegments(a, b, count, startIndex) {
   const wheelTraits = [];
   const traitsA = a.traits.length > 0 ? a.traits : [{ trait: { label: 'Physical Might', rarity: 'common' } }];
   const traitsB = b.traits.length > 0 ? b.traits : [{ trait: { label: 'Willpower', rarity: 'common' } }];
-  const tiers = store.getState().rarityTiers;
+  const state = store.getState();
+  const tiers = getTiersForCharacter(a, state);
 
   const effA = computeEffectivePL(a);
   const effB = computeEffectivePL(b);
@@ -219,6 +222,16 @@ function generateLocalClashSegments(a, b, count, startIndex) {
       }
     }
 
+    if (winner === 'a') {
+      const pl = computeRawPower(a);
+      const plScale = Math.max(0.5, Math.min(2.5, 1 + (pl - 50) / 100));
+      points = Math.round(points * plScale);
+    } else if (winner === 'b') {
+      const pl = computeRawPower(b);
+      const plScale = Math.max(0.5, Math.min(2.5, 1 + (pl - 50) / 100));
+      points = Math.round(points * plScale);
+    }
+
     wheelTraits.push({
       id: `local-seg-${startIndex + i}-${Math.random().toString(36).substr(2, 4)}`,
       label: label.substring(0, 18),
@@ -272,7 +285,7 @@ Fighter A ("a"): "${a.name}" (Power Level: ${rawA} PL, Effective PL: ${effA}) wi
 Fighter B ("b"): "${b.name}" (Power Level: ${rawB} PL, Effective PL: ${effB}) with traits: ${traitSummaryB}. Backstory: ${b.backstory || ''}.
 
 STRICT COMBAT & TRAIT RULES:
-1. EXCLUSIVE TRAIT RULE: You MUST ONLY use the EXACT traits listed for each fighter above. NEVER invent, hallucinate, or insert unlisted abilities or martial art names (such as "Ki Circuit", "Venuzdonoa", "swift slash", "Shadowfire", etc.). If a fighter has only 1 trait listed, ALL of their combat actions MUST stem exclusively from that single trait.
+1. EXCLUSIVE TRAIT RULE: You MUST ONLY use the EXACT traits listed for each fighter above. NEVER invent, hallucinate, or insert unlisted abilities, generic energy terms (like 'Ki', 'Mana', 'Chakra', 'Nen'), or martial arts systems not present in the character's traits. If a fighter has only 1 trait listed, ALL of their combat actions MUST stem exclusively from that single trait.
 2. POWER LEVEL (PL) RULE: ${leader} has higher PL (${Math.max(rawA, rawB)} vs ${Math.min(rawA, rawB)}) and MUST win at least 6 of the 8 clash segments.
 3. MULTI-TRAIT SYNERGY: ONLY fuse multiple traits together if the fighter actually possesses more than 1 trait. If a fighter has only 1 trait, state that exact trait directly without inventing secondary abilities.
 4. STRICT NAMES RULE: You MUST refer to Fighter A ONLY as "${a.name}" and Fighter B ONLY as "${b.name}". NEVER make up or substitute third-party character names (such as "Aria", "Arthur", "Kael", etc.) in the combat logs or labels.
@@ -325,12 +338,23 @@ Generate exactly 8 segments total matching the consequence schema.`;
                 label = label.substring(0, 16) + '..';
               }
 
+              let points = seg.points;
+              if (seg.winner === 'a') {
+                const pl = computeRawPower(a);
+                const plScale = Math.max(0.5, Math.min(2.5, 1 + (pl - 50) / 100));
+                points = Math.round(points * plScale);
+              } else if (seg.winner === 'b') {
+                const pl = computeRawPower(b);
+                const plScale = Math.max(0.5, Math.min(2.5, 1 + (pl - 50) / 100));
+                points = Math.round(points * plScale);
+              }
+
               return {
                 id: `fight-seg-${i}`,
                 label: label,
                 rarity: rarity,
                 winner: seg.winner,
-                points: seg.points,
+                points: points,
                 combatLog: seg.combatLog
               };
             });
@@ -365,19 +389,24 @@ Generate exactly 8 segments total matching the consequence schema.`;
           <div style="display:flex; justify-content:space-between; width:100%; text-align:center; background:rgba(255,255,255,0.03); padding:12px; border-radius:12px; border:1px solid rgba(255,255,255,0.08);">
             <div style="flex:1;">
               <div style="font-family:var(--font-display); font-size:16px; font-weight:900; color:#00f5ff;">${escapeHtml(a.name)}</div>
-              <div style="font-size:11px; opacity:0.6; margin-top:2px;">Power: ${computePower(a)}</div>
+              <div style="font-size:11px; opacity:0.6; margin-top:2px;">Power Level: ${computeRawPower(a)} PL</div>
               <div style="font-size:24px; font-weight:bold; color:#00f5ff; margin-top:6px;" id="score-a-val">0</div>
             </div>
             <div style="display:flex; align-items:center; justify-content:center; padding:0 12px; font-size:18px; font-family:var(--font-display); color:rgba(255,255,255,0.2);">VS</div>
             <div style="flex:1;">
               <div style="font-family:var(--font-display); font-size:16px; font-weight:900; color:#bf00ff;">${escapeHtml(b.name)}</div>
-              <div style="font-size:11px; opacity:0.6; margin-top:2px;">Power: ${computePower(b)}</div>
+              <div style="font-size:11px; opacity:0.6; margin-top:2px;">Power Level: ${computeRawPower(b)} PL</div>
               <div style="font-size:24px; font-weight:bold; color:#bf00ff; margin-top:6px;" id="score-b-val">0</div>
             </div>
           </div>
 
           <div id="fight-wheel-status" style="font-size:13px; color:rgba(255,255,255,0.7); text-align:center; padding:10px;">Constructing simulation parameters...</div>
           <div id="fight-wheel-container" style="display:none; justify-content:center; align-items:center; position:relative; min-height:330px; width:100%;"></div>
+
+          <label style="font-size:11px; color:rgba(255,255,255,0.6); display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; margin-bottom:4px;">
+            <input type="checkbox" id="tournament-skip-animation-toggle" ${localStorage.getItem('skip_wheel_animation') === '1' ? 'checked' : ''} style="cursor:pointer;" />
+            <span>⚡ Skip Spin Animation</span>
+          </label>
 
           <div style="display:flex; gap:12px; width:100%; justify-content:center;">
             <button class="btn btn-primary" id="spin-fight-btn" disabled style="display:none; padding:10px 24px; font-weight:bold; font-size:15px;">⚔️ Spin Round 1</button>
@@ -406,19 +435,24 @@ function _renderFightModal(wheelTraits, a, b, match, container) {
         <div style="display:flex; justify-content:space-between; width:100%; text-align:center; background:rgba(255,255,255,0.03); padding:12px; border-radius:12px; border:1px solid rgba(255,255,255,0.08);">
           <div style="flex:1;">
             <div style="font-family:var(--font-display); font-size:16px; font-weight:900; color:#00f5ff;">${escapeHtml(a.name)}</div>
-            <div style="font-size:11px; opacity:0.6; margin-top:2px;">Power: ${computePower(a)}</div>
+            <div style="font-size:11px; opacity:0.6; margin-top:2px;">Power Level: ${computeRawPower(a)} PL</div>
             <div style="font-size:24px; font-weight:bold; color:#00f5ff; margin-top:6px;" id="score-a-val">0</div>
           </div>
           <div style="display:flex; align-items:center; justify-content:center; padding:0 12px; font-size:18px; font-family:var(--font-display); color:rgba(255,255,255,0.2);">VS</div>
           <div style="flex:1;">
             <div style="font-family:var(--font-display); font-size:16px; font-weight:900; color:#bf00ff;">${escapeHtml(b.name)}</div>
-            <div style="font-size:11px; opacity:0.6; margin-top:2px;">Power: ${computePower(b)}</div>
+            <div style="font-size:11px; opacity:0.6; margin-top:2px;">Power Level: ${computeRawPower(b)} PL</div>
             <div style="font-size:24px; font-weight:bold; color:#bf00ff; margin-top:6px;" id="score-b-val">0</div>
           </div>
         </div>
 
         <div id="fight-wheel-status" style="font-size:13px; color:rgba(255,255,255,0.7); text-align:center; padding:10px;">Get ready...</div>
         <div id="fight-wheel-container" style="display:none; justify-content:center; align-items:center; position:relative; min-height:330px; width:100%;"></div>
+
+        <label style="font-size:11px; color:rgba(255,255,255,0.6); display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; margin-bottom:4px;">
+          <input type="checkbox" id="tournament-skip-animation-toggle" ${localStorage.getItem('skip_wheel_animation') === '1' ? 'checked' : ''} style="cursor:pointer;" />
+          <span>⚡ Skip Spin Animation</span>
+        </label>
 
         <div style="display:flex; gap:12px; width:100%; justify-content:center;">
           <button class="btn btn-primary" id="spin-fight-btn" disabled style="display:none; padding:10px 24px; font-weight:bold; font-size:15px;">⚔️ Spin Round 1</button>
@@ -473,6 +507,13 @@ function _initializeFightWheel(wheelTraits, a, b, match, container) {
   });
   canvasContainer._spinWheelInstance = spinWheel;
 
+  const skipToggle = document.querySelector('#tournament-skip-animation-toggle');
+  if (skipToggle) {
+    skipToggle.onchange = () => {
+      localStorage.setItem('skip_wheel_animation', skipToggle.checked ? '1' : '0');
+    };
+  }
+
   // Ensure all traits start enabled
   currentWheelObj.traits.forEach(t => t.disabled = false);
 
@@ -490,7 +531,8 @@ function _initializeFightWheel(wheelTraits, a, b, match, container) {
         currentWheelObj.traits.forEach(t => t.disabled = false);
       }
 
-      const landResult = await spinWheel.spin();
+      const skipAnimation = localStorage.getItem('skip_wheel_animation') === '1';
+      const landResult = await spinWheel.spin(null, skipAnimation);
       if (!landResult || !landResult.trait) {
         showToast('Spin missed slice, try again.', 'info');
         spinBtn.disabled = false;
@@ -515,7 +557,8 @@ function _initializeFightWheel(wheelTraits, a, b, match, container) {
 
       const logP = document.createElement('div');
       logP.style.marginBottom = '8px';
-      logP.innerHTML = `<span style="color:var(--gold); font-weight:bold;">Round ${fightRound}:</span> ${escapeHtml(winningTrait.combatLog || winningTrait.label)}`;
+      const pointsText = (pts > 0 && winningTrait.winner !== 'draw') ? ` (+${pts} pts)` : '';
+      logP.innerHTML = `<span style="color:var(--gold); font-weight:bold;">Round ${fightRound}:</span> ${escapeHtml(winningTrait.combatLog || winningTrait.label)} <span style="color:var(--cyan); font-weight:bold;">${pointsText}</span>`;
       logBox.appendChild(logP);
       logBox.scrollTop = logBox.scrollHeight;
 
@@ -524,10 +567,43 @@ function _initializeFightWheel(wheelTraits, a, b, match, container) {
       if (landedTrait) {
         landedTrait.disabled = true;
       }
+
+      // Check if it's a fatal/decisive blow
+      const isFatalBlow = winningTrait.winner !== 'draw' && (
+        winningTrait.rarity === 'mythic' ||
+        winningTrait.rarity === 'legendary' ||
+        /kill|die|dead|slain|defeat|fatal|finish|KO|victory/i.test(winningTrait.combatLog || winningTrait.label)
+      );
+
+      // Check if any round so far was legendary/mythic
+      const hasBigOutcome = currentWheelObj.traits.some(t => t.disabled && (t.rarity === 'legendary' || t.rarity === 'mythic'));
+
+      let shouldContinue = false;
+      const totalTraits = currentWheelObj.traits.length;
+      const disabledTraitsCount = currentWheelObj.traits.filter(t => t.disabled).length;
+      const hasUnspunTraits = disabledTraitsCount < totalTraits;
+
+      if (isFatalBlow) {
+        shouldContinue = false;
+      } else {
+        if (fightRound < 3) {
+          shouldContinue = true;
+        } else if (!hasBigOutcome && hasUnspunTraits && fightRound < 8) {
+          // Keep going up to 8 rounds if no decisive (legendary/mythic) blow landed yet
+          shouldContinue = true;
+        } else if (scoreA === scoreB && hasUnspunTraits) {
+          shouldContinue = true;
+        }
+      }
+
       fightRound++;
 
-      if (fightRound <= 3 || scoreA === scoreB) {
-        spinBtn.textContent = scoreA === scoreB && fightRound > 3 ? `⚔️ Spin Sudden Death` : `⚔️ Spin Round ${fightRound}`;
+      if (shouldContinue) {
+        const isTiebreaker = scoreA === scoreB && fightRound > 3;
+        const isExtended = !hasBigOutcome && fightRound > 3;
+        spinBtn.textContent = isTiebreaker 
+          ? `⚔️ Spin Sudden Death` 
+          : (isExtended ? `⚔️ Spin Extended Round ${fightRound}` : `⚔️ Spin Round ${fightRound}`);
         spinWheel.currentAngle = 0;
         spinWheel._drawWheel(0);
         spinBtn.disabled = false;
@@ -535,15 +611,29 @@ function _initializeFightWheel(wheelTraits, a, b, match, container) {
         spinBtn.style.display = 'none';
         declareBtn.style.display = 'block';
 
-        const winner = scoreA > scoreB ? a : b;
-        const winnerColor = scoreA > scoreB ? '#00f5ff' : '#bf00ff';
+        let winner = null;
+        let conclusionText = '';
+        if (isFatalBlow) {
+          winner = winningTrait.winner === 'a' ? a : b;
+          const winnerColor = winningTrait.winner === 'a' ? '#00f5ff' : '#bf00ff';
+          conclusionText = `🏆 DECISIVE BLOW: <span style="color:${winnerColor}; font-weight:bold;">${escapeHtml(winner.name)}</span> delivers a fatal hit and wins the battle!`;
+        } else {
+          winner = scoreA > scoreB ? a : b;
+          if (scoreA === scoreB) {
+            const rawA = computeRawPower(a);
+            const rawB = computeRawPower(b);
+            winner = rawA > rawB ? a : (rawA < rawB ? b : (Math.random() > 0.5 ? a : b));
+          }
+          const winnerColor = winner.id === a.id ? '#00f5ff' : '#bf00ff';
+          conclusionText = `🏆 CONCLUSION: <span style="color:${winnerColor}; font-weight:bold;">${escapeHtml(winner.name)}</span> wins the battle (${Math.max(scoreA, scoreB)} vs ${Math.min(scoreA, scoreB)})!`;
+        }
 
         const concludeP = document.createElement('div');
         concludeP.style.marginTop = '10px';
         concludeP.style.fontWeight = 'bold';
         concludeP.style.borderTop = '1px solid rgba(255,255,255,0.1)';
         concludeP.style.paddingTop = '8px';
-        concludeP.innerHTML = `🏆 CONCLUSION: <span style="color:${winnerColor};">${escapeHtml(winner.name)}</span> wins the battle (${Math.max(scoreA, scoreB)} vs ${Math.min(scoreA, scoreB)})!`;
+        concludeP.innerHTML = conclusionText;
         logBox.appendChild(concludeP);
         logBox.scrollTop = logBox.scrollHeight;
 

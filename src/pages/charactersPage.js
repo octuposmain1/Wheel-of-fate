@@ -3,7 +3,7 @@
 // ============================================================
 
 import { store } from '../utils/store.js';
-import { getTierById, getTierIntensity, isDramaticTier, hexToRgba, renderRpgStatsSheet, proceduralFallbackPowerSystem } from '../utils/rarity.js';
+import { getTierById, getTierIntensity, isDramaticTier, hexToRgba, renderRpgStatsSheet, proceduralFallbackPowerSystem, getTiersForCharacter } from '../utils/rarity.js';
 import { showToast, openModal, closeModal, showAiLoadingModal } from '../components/toast.js';
 import { requireApiKey, callAiChat, cleanAndParseJson } from '../utils/ai.js';
 import { router } from '../utils/router.js';
@@ -87,7 +87,8 @@ function _render(container, state) {
   `;
 }
 
-function _renderCharCard(char, wheels, tiers) {
+function _renderCharCard(char, wheels, globalTiers) {
+  const tiers = getTiersForCharacter(char, store.getState());
   const isExpanded = expandedCharIds.has(char.id);
   const date = new Date(char.createdAt).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -98,13 +99,16 @@ function _renderCharCard(char, wheels, tiers) {
     char.powerSystem = proceduralFallbackPowerSystem(char.traits, tiers, wheels);
   }
 
+  const powerSystem = char.powerSystem || proceduralFallbackPowerSystem(char.traits, tiers, wheels);
+  const potentialScore = powerSystem?.stats?.combatPower ?? 50;
+  const rawPower = powerSystem?.rawPower ?? 0;
+
   // Find highest rarity
   const highest = char.traits.reduce((best, lt) => {
     return getTierIntensity(tiers, lt.trait.rarity) > getTierIntensity(tiers, best?.trait?.rarity) ? lt : best;
   }, null);
 
   const borderColor = highest ? getTierById(tiers, highest.trait.rarity).color : 'transparent';
-  const potentialScore = char.powerSystem?.stats?.combatPower ?? 50;
 
   return `
     <div
@@ -115,22 +119,25 @@ function _renderCharCard(char, wheels, tiers) {
       style="border-top-color: ${borderColor}; border-top-width: 3px; transition: all 0.3s ease;"
     >
       <!-- Compact Header -->
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:${isExpanded ? '12px' : '4px'};">
-        <div>
-          <div class="char-card-name" style="display:flex; align-items:center; gap:8px;">
-            ${escapeHtml(char.name)}
-            <span style="font-size:10px; padding:2px 8px; border-radius:12px; background:rgba(255,215,0,0.12); color:var(--gold); font-weight:700; border:1px solid rgba(255,215,0,0.3);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:${isExpanded ? '12px' : '4px'};">
+        <div style="flex:1; min-width:0;">
+          <div class="char-card-name" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; word-break:break-word;">
+            <span>${escapeHtml(char.name)}</span>
+            <span style="font-size:10px; padding:2px 8px; border-radius:12px; background:rgba(255,215,0,0.12); color:var(--gold); font-weight:700; border:1px solid rgba(255,215,0,0.3); flex-shrink:0;">
               ✨ ${potentialScore} Potential
             </span>
+            <span style="font-size:10px; padding:2px 8px; border-radius:12px; background:rgba(0,245,255,0.12); color:var(--cyan); font-weight:700; border:1px solid rgba(0,245,255,0.3); flex-shrink:0;">
+              ⚡ ${rawPower} PL
+            </span>
           </div>
-          ${char.powerSystem ? `
-            <div style="font-size:10px; color:var(--cyan); font-weight:600; margin-top:2px;">
-              ⚡ ${escapeHtml(char.powerSystem.systemName)}: ${escapeHtml(char.powerSystem.classOrType)}
+          ${powerSystem ? `
+            <div style="font-size:10px; color:var(--cyan); font-weight:600; margin-top:2px; word-break:break-word;">
+              ⚡ ${escapeHtml(powerSystem.systemName)}: ${escapeHtml(powerSystem.classOrType)}
             </div>
           ` : ''}
         </div>
 
-        <div style="display:flex; gap:6px; align-items:center;">
+        <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
           <button
             class="btn btn-ghost btn-sm"
             data-toggle-card="${char.id}"
@@ -344,7 +351,7 @@ function _bindEvents(container) {
 }
 
 function _generateCharacterStory(char, container) {
-  const tiers = store.getState().rarityTiers;
+  const tiers = getTiersForCharacter(char, store.getState());
   const traitSummary = char.traits
     .map(({ wheelId, trait }) => {
       const whl = store.getState().wheels.find(w => w.id === wheelId);
@@ -374,7 +381,7 @@ Return a raw, unformatted JSON object matching this schema (do NOT wrap in markd
 {
   "backstory": "An epic, high-quality 3-sentence narrative weaving their traits and fatal weakness.",
   "powerSystem": {
-    "systemName": "E.g. Nen, Chakra, Stand, Ki, Mana, or a thematic power system name",
+    "systemName": "A unique, creative power system name derived directly from the character's positive traits (do NOT use generic anime names like Ki, Nen, Chakra, Stand, Mana)",
     "classOrType": "E.g. wind manipulator, enhancer, conjurer, elementalist",
     "synergyRating": "${precalculated.synergyRating}",
     "stats": {

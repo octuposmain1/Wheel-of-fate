@@ -367,3 +367,43 @@ export function proceduralFallbackPowerSystem(lockedTraits, tiers, wheels = []) 
     ratingExpl
   };
 }
+
+export function getTiersForWheels(wheelIds, state) {
+  const { wheels, rarityTiers } = state;
+  const folderWheels = wheels.filter(w => wheelIds.includes(w.id));
+
+  // Collect all unique rarity IDs used in these wheels' traits
+  const usedRarities = new Set();
+  folderWheels.forEach(w => {
+    (w.traits || []).forEach(t => {
+      if (t.rarity) usedRarities.add(t.rarity);
+    });
+  });
+
+  // If no traits/rarities found, fallback to all global tiers
+  if (usedRarities.size === 0) return rarityTiers;
+
+  // Filter and return global rarityTiers keeping their order
+  return rarityTiers.filter(t => usedRarities.has(t.id));
+}
+
+export function getTiersForCharacter(character, state) {
+  const charWheelIds = (character.traits || []).map(t => t.wheelId);
+
+  // Find which group/folder contains these wheels
+  const groups = state.wheelGroups || [];
+  const matchingGroup = groups.find(g =>
+    g.wheelIds && g.wheelIds.some(wid => charWheelIds.includes(wid))
+  );
+
+  // Get the wheels belonging to this group
+  let folderWheelIds = [];
+  if (matchingGroup) {
+    folderWheelIds = matchingGroup.wheelIds || [];
+  } else {
+    folderWheelIds = charWheelIds; // Fallback to character's own wheels
+  }
+
+  return getTiersForWheels(folderWheelIds, state);
+}
+

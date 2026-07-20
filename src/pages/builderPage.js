@@ -4,7 +4,7 @@
 
 import { store } from '../utils/store.js';
 import { getTierById, getTierIntensity, isDramaticTier, computeRarityBarSegments, hexToRgba, isNegativeWheel } from '../utils/rarity.js';
-import { showToast, openModal, closeModal } from '../components/toast.js';
+import { showToast, openModal, closeModal, showAiLoadingModal } from '../components/toast.js';
 import { requireApiKey, callAiChat, cleanAndParseJson } from '../utils/ai.js';
 
 const WHEEL_ICONS = ['🎡','🧬','🩸','⚡','💀','🗡️','🛡️','🌊','🔥','❄️','⚡','🌪️','☠️','👁️','🌙','☀️','🎭','🦋','🐉','💎'];
@@ -126,6 +126,9 @@ function _render(container, state) {
   }
 
   const selectedWheel = displayedWheels.find(w => w.id === selectedWheelId) ?? displayedWheels[0] ?? null;
+  if (selectedWheel && selectedWheelId !== selectedWheel.id) {
+    selectedWheelId = selectedWheel.id;
+  }
 
   // Save scroll position for trait list
   const traitList = container.querySelector('.traits-list');
@@ -165,7 +168,6 @@ function _render(container, state) {
                 class="wheel-list-item ${w.id === selectedWheel?.id ? 'active' : ''}"
                 data-select-wheel="${w.id}"
                 data-wheel-index="${idx}"
-                draggable="true"
                 role="listitem"
                 tabindex="0"
                 aria-selected="${w.id === selectedWheel?.id}"
@@ -313,7 +315,6 @@ function _renderEditor(wheel, tiers) {
             class="trait-item"
             data-trait-id="${trait.id}"
             role="listitem"
-            draggable="true"
             data-idx="${idx}"
             aria-label="Trait: ${trait.label}, rarity: ${trait.rarity}"
           >
@@ -340,6 +341,14 @@ function _renderEditor(wheel, tiers) {
               `).join('')}
             </select>
             <span class="rarity-badge ${isDramaticTier(tiers, trait.rarity) ? 'rarity-badge-dramatic' : ''}" style="font-size:9px; padding:2px 6px; background:${hexToRgba(tierColor, 0.15)}; color:${tierColor}; border:1px solid ${hexToRgba(tierColor, 0.4)};">${getTierById(tiers, trait.rarity).weight}%</span>
+            <button
+              class="trait-desc-btn"
+              data-desc-trait="${trait.id}"
+              aria-label="Explain trait: ${trait.label}"
+              style="background:transparent; border:none; color:rgba(255,255,255,0.4); cursor:pointer; font-size:14px; padding:4px; display:flex; align-items:center; justify-content:center; transition:color 0.2s;"
+              onmouseover="this.style.color='#00f5ff'"
+              onmouseout="this.style.color='rgba(255,255,255,0.4)'"
+            >❓</button>
             <button
               class="trait-delete-btn"
               data-delete-trait="${trait.id}"
@@ -456,6 +465,17 @@ function _bindRarityManagerEvents(container, state) {
 // ─── Bind Events ───────────────────────────────────────────────
 function _bindEvents(container, state) {
   const wheel = state.wheels.find(w => w.id === selectedWheelId);
+  const { wheels } = state;
+  const activeGroups = (state.wheelGroups || []).filter(g => g.active);
+  const activeWheelIds = new Set(activeGroups.flatMap(g => g.wheelIds || []));
+  let displayedWheels = activeGroups.length > 0
+    ? wheels.filter(w => activeWheelIds.has(w.id))
+    : wheels;
+
+  if (wheelSearchQuery.trim()) {
+    const q = wheelSearchQuery.toLowerCase().trim();
+    displayedWheels = displayedWheels.filter(w => w.name.toLowerCase().includes(q));
+  }
 
   _bindRarityManagerEvents(container, state);
 
@@ -544,26 +564,43 @@ function _bindEvents(container, state) {
     };
   });
 
-  // Move wheel up/down
+  // Move wheel up/down (translating local folder index to global index)
   container.querySelectorAll('[data-move-wheel-up]').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
-      const idx = parseInt(btn.dataset.moveWheelUp, 10);
-      store.reorderWheels(idx, idx - 1);
+      const localIdx = parseInt(btn.dataset.moveWheelUp, 10);
+      const wheelA = displayedWheels[localIdx];
+      const wheelB = displayedWheels[localIdx - 1];
+      if (wheelA && wheelB) {
+        const globalFrom = state.wheels.findIndex(w => w.id === wheelA.id);
+        const globalTo = state.wheels.findIndex(w => w.id === wheelB.id);
+        store.reorderWheels(globalFrom, globalTo);
+      }
     };
   });
 
   container.querySelectorAll('[data-move-wheel-down]').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
-      const idx = parseInt(btn.dataset.moveWheelDown, 10);
-      store.reorderWheels(idx, idx + 1);
+      const localIdx = parseInt(btn.dataset.moveWheelDown, 10);
+      const wheelA = displayedWheels[localIdx];
+      const wheelB = displayedWheels[localIdx + 1];
+      if (wheelA && wheelB) {
+        const globalFrom = state.wheels.findIndex(w => w.id === wheelA.id);
+        const globalTo = state.wheels.findIndex(w => w.id === wheelB.id);
+        store.reorderWheels(globalFrom, globalTo);
+      }
     };
   });
 
-  // Drag and drop HTML5 reordering
+  // Drag and drop HTML5 reordering (translating local folder index to global index)
   let draggedIndex = null;
-  container.querySelectorAll('.wheel-list-item[draggable]').forEach(item => {
+  container.querySelectorAll('.wheel-list-item').forEach(item => {
+    item.addEventListener('mousedown', (e) => {
+      const isHandle = e.target.classList.contains('drag-handle');
+      item.setAttribute('draggable', isHandle ? 'true' : 'false');
+    });
+
     item.addEventListener('dragstart', (e) => {
       draggedIndex = parseInt(item.dataset.wheelIndex, 10);
       e.dataTransfer.effectAllowed = 'move';
@@ -573,6 +610,7 @@ function _bindEvents(container, state) {
     item.addEventListener('dragend', () => {
       item.classList.remove('dragging');
       draggedIndex = null;
+      item.setAttribute('draggable', 'false');
     });
 
     item.addEventListener('dragover', (e) => {
@@ -584,7 +622,13 @@ function _bindEvents(container, state) {
       e.preventDefault();
       const targetIndex = parseInt(item.dataset.wheelIndex, 10);
       if (draggedIndex !== null && targetIndex !== null && draggedIndex !== targetIndex) {
-        store.reorderWheels(draggedIndex, targetIndex);
+        const wheelA = displayedWheels[draggedIndex];
+        const wheelB = displayedWheels[targetIndex];
+        if (wheelA && wheelB) {
+          const globalFrom = state.wheels.findIndex(w => w.id === wheelA.id);
+          const globalTo = state.wheels.findIndex(w => w.id === wheelB.id);
+          store.reorderWheels(globalFrom, globalTo);
+        }
       }
     });
   });
@@ -601,18 +645,18 @@ function _bindEvents(container, state) {
     aiGenBtn.onclick = () => _showAiGenerateWheelModal(container);
   }
 
-  // Delete wheel
+  // Delete wheel (selecting the next wheel in the active folder before deletion to prevent state de-sync)
   container.querySelectorAll('[data-delete-wheel]').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
       const wid = btn.dataset.deleteWheel;
       const wName = state.wheels.find(w => w.id === wid)?.name ?? 'this wheel';
       if (confirm(`Delete "${wName}"? This cannot be undone.`)) {
-        store.deleteWheel(wid);
         if (selectedWheelId === wid) {
-          const remaining = store.getState().wheels;
-          selectedWheelId = remaining[0]?.id ?? null;
+          const remainingDisplayed = displayedWheels.filter(w => w.id !== wid);
+          selectedWheelId = remainingDisplayed[0]?.id ?? null;
         }
+        store.deleteWheel(wid);
         showToast(`Deleted "${wName}"`, 'info');
       }
     };
@@ -674,6 +718,68 @@ function _bindEvents(container, state) {
   container.querySelectorAll('[data-delete-trait]').forEach(btn => {
     btn.onclick = () => {
       store.deleteTrait(wheel.id, btn.dataset.deleteTrait);
+    };
+  });
+
+  // Explain trait (Hover Tooltip with Background generation)
+  container.querySelectorAll('[data-desc-trait]').forEach(btn => {
+    const tid = btn.dataset.descTrait;
+    const trait = wheel.traits.find(t => t.id === tid);
+    if (!trait) return;
+
+    btn.onmouseenter = (e) => {
+      const tooltip = _getOrCreateBuilderTooltip();
+      
+      const updatePosition = (x, y) => {
+        const estWidth = 250;
+        const estHeight = 100;
+        const left = Math.min(x + 16, window.innerWidth - estWidth - 12);
+        const top = Math.min(y + 16, window.innerHeight - estHeight - 12);
+        tooltip.style.left = `${Math.max(12, left)}px`;
+        tooltip.style.top = `${Math.max(12, top)}px`;
+      };
+      updatePosition(e.clientX, e.clientY);
+      
+      tooltip.style.opacity = '1';
+      tooltip.style.transform = 'translateY(0)';
+
+      if (trait.description) {
+        tooltip.innerHTML = `
+          <div style="font-weight:bold; color:var(--gold); margin-bottom:4px; font-size:13px;">🔮 ${escapeHtml(trait.label)}</div>
+          <div style="font-style:italic; color:rgba(255,255,255,0.95);">${escapeHtml(trait.description)}</div>
+        `;
+      } else {
+        tooltip.innerHTML = `
+          <div style="font-weight:bold; color:var(--cyan); margin-bottom:4px; font-size:13px; display:flex; align-items:center; gap:6px;">
+            <span class="spinner" style="width:12px; height:12px; border-width:1.5px; border-color:var(--cyan) transparent var(--cyan) transparent; animation: spin 0.8s linear infinite;"></span>
+            <span>Channeling lore...</span>
+          </div>
+          <div style="font-style:italic; color:rgba(255,255,255,0.5);">Unveiling the cosmic traits of this fate...</div>
+        `;
+        _generateTraitDescriptionSilently(wheel, trait).then(() => {
+          const activeTooltip = document.querySelector('.builder-tooltip');
+          if (activeTooltip && activeTooltip.style.opacity === '1') {
+            const updatedTrait = store.getState().wheels.find(w => w.id === wheel.id)?.traits?.find(t => t.id === trait.id);
+            if (updatedTrait && updatedTrait.description) {
+              activeTooltip.innerHTML = `
+                <div style="font-weight:bold; color:var(--gold); margin-bottom:4px; font-size:13px;">🔮 ${escapeHtml(updatedTrait.label)}</div>
+                <div style="font-style:italic; color:rgba(255,255,255,0.95);">${escapeHtml(updatedTrait.description)}</div>
+              `;
+            }
+          }
+        });
+      }
+
+      btn.onmousemove = (moveEvent) => {
+        updatePosition(moveEvent.clientX, moveEvent.clientY);
+      };
+    };
+
+    btn.onmouseleave = () => {
+      const tooltip = _getOrCreateBuilderTooltip();
+      tooltip.style.opacity = '0';
+      tooltip.style.transform = 'translateY(10px)';
+      btn.onmousemove = null;
     };
   });
 
@@ -741,6 +847,11 @@ function _bindDragDrop(container, wheel) {
   let dragSrc = null;
 
   list.querySelectorAll('.trait-item').forEach(item => {
+    item.addEventListener('mousedown', (e) => {
+      const isHandle = e.target.classList.contains('trait-drag-handle');
+      item.setAttribute('draggable', isHandle ? 'true' : 'false');
+    });
+
     item.addEventListener('dragstart', (e) => {
       dragSrc = item;
       e.dataTransfer.effectAllowed = 'move';
@@ -749,6 +860,7 @@ function _bindDragDrop(container, wheel) {
 
     item.addEventListener('dragend', () => {
       item.style.opacity = '1';
+      item.setAttribute('draggable', 'false');
       list.querySelectorAll('.trait-item').forEach(i => i.classList.remove('drag-over'));
     });
 
@@ -817,7 +929,10 @@ function _showAddWheelModal() {
 
   document.querySelectorAll('[data-icon]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-icon]').forEach(b => b.style.background = '');
+      document.querySelectorAll('[data-icon]').forEach(b => {
+        b.style.background = '';
+        b.style.borderColor = '';
+      });
       btn.style.background = 'rgba(0,245,255,0.15)';
       btn.style.borderColor = 'var(--cyan)';
       selectedIcon = btn.dataset.icon;
@@ -828,6 +943,10 @@ function _showAddWheelModal() {
     const name = document.querySelector('#modal-wheel-name')?.value.trim();
     if (!name) { document.querySelector('#modal-wheel-name')?.focus(); return; }
     const wheel = store.addWheel(name, selectedIcon);
+    const activeGroups = (store.getState().wheelGroups || []).filter(g => g.active);
+    for (const g of activeGroups) {
+      store.assignWheelToGroup(wheel.id, g.id);
+    }
     selectedWheelId = wheel.id;
     closeModal();
     showToast(`Created wheel: "${name}"`, 'success');
@@ -941,6 +1060,10 @@ function _showAiGenerateWheelModal(container) {
           Describe the theme or concept of the wheel you want to create (e.g., "Post-apocalyptic mutations", "Cyberpunk corporations", "Mythical familiars"). The AI will generate themed traits and assign appropriate weights.
         </p>
         <div>
+          <label style="font-size:12px; color:rgba(255,255,255,0.5); display:block; margin-bottom:6px;">Wheel Name (Optional)</label>
+          <input class="input" id="ai-wheel-name-input" type="text" placeholder="e.g. Mutations, Companions, Curses…" maxlength="40" />
+        </div>
+        <div>
           <label style="font-size:12px; color:rgba(255,255,255,0.5); display:block; margin-bottom:6px;">Prompt / Theme</label>
           <input class="input" id="ai-wheel-prompt" type="text" placeholder="e.g. Mythical companions, Cursed swords…" maxlength="80" autofocus />
         </div>
@@ -960,6 +1083,7 @@ function _showAiGenerateWheelModal(container) {
   });
 
   const promptInput = document.querySelector('#ai-wheel-prompt');
+  const nameInput = document.querySelector('#ai-wheel-name-input');
   const countSlider = document.querySelector('#ai-wheel-count');
   const countVal = document.querySelector('#ai-wheel-count-val');
   const generateBtn = document.querySelector('#modal-ai-generate');
@@ -972,8 +1096,9 @@ function _showAiGenerateWheelModal(container) {
     const promptValue = promptInput?.value.trim();
     if (!promptValue) { promptInput?.focus(); return; }
 
+    const wheelName = nameInput?.value.trim();
     const traitCount = parseInt(countSlider?.value || '10', 10);
-    const isNeg = isNegativeWheel(promptValue);
+    const isNeg = isNegativeWheel(promptValue) || (wheelName && isNegativeWheel(wheelName));
 
     const runWithApiKey = (apiKey) => {
       openModal({
@@ -988,7 +1113,7 @@ function _showAiGenerateWheelModal(container) {
 
       Promise.resolve().then(async () => {
         try {
-          const systemPrompt = `You are a creative game mechanics designer. Generate a themed spinning wheel configuration for the prompt/theme: "${promptValue}".
+          const systemPrompt = `You are a creative game mechanics designer. Generate a themed spinning wheel configuration ${wheelName ? `for a wheel named "${wheelName}" ` : ''}based on the prompt/theme: "${promptValue}".
 Important context: This application is a character generator, RPG combat simulator, and fantasy trait builder. If the theme/prompt is ambiguous (like 'race', 'class', etc.), default to fantasy/RPG character context (e.g. 'race' should mean character race/species like Elf, Dwarf, Orc, Human, rather than car racing).
 ${isNeg ? 'This wheel represents negative attributes, weaknesses, defects, or curses. Every single trait generated MUST be a disadvantage, flaw, weakness, or penalty (e.g. Brittle Bones, Slow Reflexes, Acrophobia, Mana Leak). Do NOT generate positive abilities or powers.' : ''}
 
@@ -996,7 +1121,7 @@ The wheel options/entries (the "traits" array in the schema) must be specific in
 
 Return a raw, unformatted JSON object matching this schema (do NOT wrap in markdown code blocks, do NOT include preamble):
 {
-  "name": "Wheel Name (max 30 characters)",
+  "name": ${wheelName ? `"${wheelName}"` : '"Creative name matching the theme (max 30 characters)"'},
   "icon": "Single emoji matching the theme",
   "traits": [
     { "label": "Trait Name (max 50 characters)", "rarity": "common" | "rare" | "legendary" | "mythic" }
@@ -1020,7 +1145,8 @@ Generate exactly ${traitCount} traits total, distributed appropriately across ra
             requestBody.response_format = { type: "json_object" };
           }
 
-          const content = await callAiChat(apiUrl, apiKey, requestBody);
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('AI request timed out')), 10000));
+          const content = await Promise.race([callAiChat(apiUrl, apiKey, requestBody), timeoutPromise]);
           const parsed = _parseWheelResponse(content);
 
           if (parsed && parsed.traits.length > 0) {
@@ -1033,14 +1159,14 @@ Generate exactly ${traitCount} traits total, distributed appropriately across ra
               return tiers[0].id;
             };
 
-            const newWheel = store.addWheel(parsed.name, parsed.icon || '🎡');
+            const newWheel = store.addWheel(wheelName || parsed.name || 'Custom Wheel', parsed.icon || '🎡');
             for (const t of parsed.traits) {
               store.addTrait(newWheel.id, t.label, getMappedRarity(t.rarity));
             }
 
             selectedWheelId = newWheel.id;
             closeModal();
-            showToast(`AI generated wheel: "${parsed.name}"`, 'success');
+            showToast(`AI generated wheel: "${wheelName || parsed.name || 'Custom Wheel'}"`, 'success');
             
             _renderWithFocusPreserved(container, store.getState());
             _bindEvents(container, store.getState());
@@ -1067,13 +1193,13 @@ Generate exactly ${traitCount} traits total, distributed appropriately across ra
         return tiers[0].id;
       };
 
-      const newWheel = store.addWheel(`${selected.name} (Simulated)`, selected.icon ?? '🎡');
+      const newWheel = store.addWheel(wheelName || selected.name, selected.icon ?? '🎡');
       for (const t of selected.traits) {
         store.addTrait(newWheel.id, t.label, getMappedRarity(t.rarity));
       }
 
       selectedWheelId = newWheel.id;
-      showToast(`Generated simulated wheel: "${selected.name}"`, 'success');
+      showToast(`Generated simulated wheel: "${wheelName || selected.name}"`, 'success');
       _renderWithFocusPreserved(container, store.getState());
       _bindEvents(container, store.getState());
     };
@@ -1144,7 +1270,7 @@ function _showAiRegenTraitsModal(container, wheel) {
 
       Promise.resolve().then(async () => {
         try {
-          const systemPrompt = `You are a creative game mechanics designer. Generate a list of themed traits/entries for the wheel prompt/theme: "${promptValue}".
+          const systemPrompt = `You are a creative game mechanics designer. Generate a list of themed traits/entries for a wheel named "${wheel.name}" with the prompt/theme: "${promptValue}".
 Important context: This application is a character generator, RPG combat simulator, and fantasy trait builder. If the theme/prompt is ambiguous (like 'race', 'class', etc.), default to fantasy/RPG character context (e.g. 'race' should mean character race/species like Elf, Dwarf, Orc, Human, rather than car racing).
 ${isNeg ? 'This wheel represents negative attributes, weaknesses, defects, or curses. Every single trait generated MUST be a disadvantage, flaw, weakness, or penalty (e.g. Brittle Bones, Slow Reflexes, Acrophobia, Mana Leak). Do NOT generate positive abilities or powers.' : ''}
 
@@ -1174,7 +1300,8 @@ Generate exactly ${traitCount} traits total, distributed appropriately across ra
             requestBody.response_format = { type: "json_object" };
           }
 
-          const content = await callAiChat(apiUrl, apiKey, requestBody);
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('AI request timed out')), 10000));
+          const content = await Promise.race([callAiChat(apiUrl, apiKey, requestBody), timeoutPromise]);
           const traits = _parseTraitsResponse(content);
 
           if (traits && traits.length > 0) {
@@ -1226,6 +1353,7 @@ Generate exactly ${traitCount} traits total, distributed appropriately across ra
       }));
 
       store.regenerateWheelTraits(wheel.id, newTraits);
+      closeModal();
       showToast(`Regenerated simulated traits for "${wheel.name}"`, 'success');
     };
 
@@ -1476,3 +1604,95 @@ function _showCreateFolderModal(container, state) {
     showToast(`Created folder "${group.name}"!`, 'success');
   });
 }
+
+function _getOrCreateBuilderTooltip() {
+  let tooltip = document.querySelector('.builder-tooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.className = 'builder-tooltip';
+    tooltip.style.position = 'fixed';
+    tooltip.style.pointerEvents = 'none';
+    tooltip.style.opacity = '0';
+    tooltip.style.zIndex = '9999';
+    tooltip.style.padding = '10px 14px';
+    tooltip.style.background = 'rgba(18, 18, 30, 0.96)';
+    tooltip.style.border = '1px solid rgba(0, 245, 255, 0.2)';
+    tooltip.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(0, 245, 255, 0.05)';
+    tooltip.style.borderRadius = '8px';
+    tooltip.style.color = '#fff';
+    tooltip.style.fontFamily = 'Inter, sans-serif';
+    tooltip.style.fontSize = '12px';
+    tooltip.style.lineHeight = '1.5';
+    tooltip.style.maxWidth = '250px';
+    tooltip.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+    tooltip.style.backdropFilter = 'blur(10px)';
+    tooltip.style.transform = 'translateY(10px)';
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+async function _getApiKeySilently() {
+  const currentKey = localStorage.getItem('openai_api_key') ?? '';
+  if (currentKey) return currentKey;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600);
+    const configRes = await fetch('/api/ai/config', { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (configRes.ok) {
+      const config = await configRes.json();
+      if (config.hasServerKey) return '';
+    }
+  } catch (err) {}
+  return null;
+}
+
+const pendingDescriptionFetches = new Set();
+
+async function _generateTraitDescriptionSilently(wheel, trait) {
+  if (pendingDescriptionFetches.has(trait.id)) return;
+  pendingDescriptionFetches.add(trait.id);
+
+  try {
+    const apiKey = await _getApiKeySilently();
+    let description = '';
+
+    if (apiKey !== null) {
+      try {
+        const systemPrompt = `You are a creative fantasy RPG lore writer. Generate a short, highly descriptive 1-2 sentence explanation of the trait "${trait.label}" from a custom wheel named "${wheel.name}" (${wheel.icon}) in a character generator.
+Explain what this trait is or what unique ability/quality it gives the character. Keep it brief, atmospheric, and under 40 words. Do not wrap in markdown or include introduction/preamble.`;
+
+        const apiUrl = localStorage.getItem('openai_api_url') || 'https://api.groq.com/openai/v1';
+        const modelName = localStorage.getItem('openai_model') || 'llama-3.1-8b-instant';
+
+        const requestBody = {
+          model: modelName,
+          max_tokens: 150,
+          messages: [{ role: 'user', content: systemPrompt }],
+        };
+
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 6000));
+        const content = await Promise.race([callAiChat(apiUrl, apiKey, requestBody), timeoutPromise]);
+        
+        description = content.replace(/"/g, '').trim();
+      } catch (aiErr) {
+        console.warn('AI description fetch failed, using fallback:', aiErr);
+      }
+    }
+
+    if (!description) {
+      const tiers = store.getState().rarityTiers;
+      const tier = getTierById(tiers, trait.rarity);
+      description = `This is a unique ${tier.label} trait named "${trait.label}" from the "${wheel.name}" wheel. It grants the character unique thematic properties in the RPG simulation.`;
+    }
+
+    store.updateTrait(wheel.id, trait.id, { description });
+  } catch (err) {
+    console.error('Error generating description:', err);
+  } finally {
+    pendingDescriptionFetches.delete(trait.id);
+  }
+}
+

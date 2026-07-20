@@ -15,9 +15,12 @@ export async function requireApiKey(onSuccess, onFreeFallback = null) {
     return;
   }
 
-  // Check if the server has a key configured (optional environment fallback)
+  // Check if the server has a key configured (optional environment fallback) with a fast timeout
   try {
-    const configRes = await fetch('/api/ai/config');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 800);
+    const configRes = await fetch('/api/ai/config', { signal: controller.signal });
+    clearTimeout(timeoutId);
     if (configRes.ok) {
       const config = await configRes.json();
       if (config.hasServerKey) {
@@ -26,7 +29,7 @@ export async function requireApiKey(onSuccess, onFreeFallback = null) {
       }
     }
   } catch (err) {
-    console.warn('Failed to fetch AI server config:', err);
+    console.warn('Failed to fetch AI server config (or timed out):', err);
   }
 
   // Prompt the user for a key if none exists

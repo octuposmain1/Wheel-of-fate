@@ -113,6 +113,21 @@ function loadFromStorage() {
       if (!parsed.wheels || parsed.wheels.length === 0) {
         parsed.wheels = DEFAULT_WHEELS;
       }
+      // Heal wheels and traits by ensuring they all have valid IDs
+      if (parsed.wheels) {
+        parsed.wheels = parsed.wheels.map(w => ({
+          id: w.id || crypto.randomUUID(),
+          name: w.name || 'Unnamed Wheel',
+          icon: w.icon || '🎡',
+          color: w.color || '#00f5ff',
+          traits: (w.traits || []).map(t => ({
+            id: t.id || crypto.randomUUID(),
+            label: t.label || '',
+            rarity: t.rarity || 'common'
+          })),
+          createdAt: w.createdAt || Date.now()
+        }));
+      }
       if (!parsed.rarityTiers || parsed.rarityTiers.length === 0) {
         parsed.rarityTiers = DEFAULT_RARITY_TIERS;
       }

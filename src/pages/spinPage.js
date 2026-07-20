@@ -562,7 +562,7 @@ Return a raw, unformatted JSON object matching this schema (do NOT wrap in markd
 }`;
 
       const apiUrl = localStorage.getItem('openai_api_url') || 'https://api.groq.com/openai/v1';
-      const modelName = localStorage.getItem('openai_model') || 'llama-3.3-70b-versatile';
+      const modelName = localStorage.getItem('openai_model') || 'llama-3.1-8b-instant';
 
       const requestBody = {
         model: modelName,

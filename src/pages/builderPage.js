@@ -44,6 +44,7 @@ function _renderWithFocusPreserved(container, state) {
   let activeRarityTierId = null;
   let activeRarityColorId = null;
   let activeRarityWeightId = null;
+  let activeValue = null;
   let selectionStart = 0;
   let selectionEnd = 0;
 
@@ -53,6 +54,9 @@ function _renderWithFocusPreserved(container, state) {
     activeRarityTierId = activeEl.dataset.tierLabel;
     activeRarityColorId = activeEl.dataset.tierColor;
     activeRarityWeightId = activeEl.dataset.tierWeight;
+    if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
+      activeValue = activeEl.value;
+    }
     try {
       selectionStart = activeEl.selectionStart ?? 0;
       selectionEnd = activeEl.selectionEnd ?? 0;
@@ -88,6 +92,9 @@ function _renderWithFocusPreserved(container, state) {
   }
 
   if (elToFocus && elToFocus instanceof HTMLInputElement) {
+    if (activeValue !== null && (activeTraitInputId || activeRarityTierId || activeId === 'wheel-name-input')) {
+      elToFocus.value = activeValue;
+    }
     elToFocus.focus();
     try {
       elToFocus.setSelectionRange(selectionStart, selectionEnd);
@@ -644,13 +651,14 @@ function _bindEvents(container, state) {
     };
   }
 
-  // Trait label edit (debounced)
+  // Trait label edit (debounced per input)
   container.querySelectorAll('[data-trait-input]').forEach(input => {
-    let debounceTimer;
     input.oninput = () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        store.updateTrait(wheel.id, input.dataset.traitInput, { label: input.value });
+      clearTimeout(input._debounceTimer);
+      const val = input.value;
+      const tid = input.dataset.traitInput;
+      input._debounceTimer = setTimeout(() => {
+        store.updateTrait(wheel.id, tid, { label: val });
       }, 400);
     };
   });
@@ -997,7 +1005,7 @@ Return a raw, unformatted JSON object matching this schema (do NOT wrap in markd
 Generate exactly ${traitCount} traits total, distributed appropriately across rarities (mostly common, some rare, a few legendary, 1 mythic).`;
 
           const apiUrl = localStorage.getItem('openai_api_url') || 'https://api.groq.com/openai/v1';
-          const modelName = localStorage.getItem('openai_model') || 'llama-3.3-70b-versatile';
+          const modelName = localStorage.getItem('openai_model') || 'llama-3.1-8b-instant';
 
           const requestBody = {
             model: modelName,
@@ -1151,7 +1159,7 @@ Return a raw, unformatted JSON object matching this schema (do NOT wrap in markd
 Generate exactly ${traitCount} traits total, distributed appropriately across rarities (mostly common, some rare, a few legendary, 1 mythic).`;
 
           const apiUrl = localStorage.getItem('openai_api_url') || 'https://api.groq.com/openai/v1';
-          const modelName = localStorage.getItem('openai_model') || 'llama-3.3-70b-versatile';
+          const modelName = localStorage.getItem('openai_model') || 'llama-3.1-8b-instant';
 
           const requestBody = {
             model: modelName,

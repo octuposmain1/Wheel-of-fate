@@ -253,16 +253,31 @@ export const store = {
   // ─── Wheel CRUD ──────────────────────────────────────────
   addWheel(name, icon = '🎡') {
     const wheel = createWheel(name, icon, []);
-    const activeGroup = (state.wheelGroups || []).find(g => g.active) || state.wheelGroups?.[0];
-    
-    let updatedGroups = state.wheelGroups || [];
-    if (activeGroup) {
-      updatedGroups = updatedGroups.map(g =>
-        g.id === activeGroup.id ? { ...g, wheelIds: [...g.wheelIds, wheel.id] } : g
+    let groups = state.wheelGroups || [];
+
+    if (groups.length === 0) {
+      groups = [{
+        id: 'group-default-fantasy',
+        name: '⚔️ Main Wheels',
+        icon: '📁',
+        active: true,
+        wheelIds: [wheel.id]
+      }];
+    } else {
+      let activeGroup = groups.find(g => g.active);
+      if (!activeGroup) {
+        // Activate the first group so the newly created wheel is immediately visible
+        groups = groups.map((g, i) => i === 0 ? { ...g, active: true } : g);
+        activeGroup = groups[0];
+      }
+      groups = groups.map(g =>
+        g.id === activeGroup.id
+          ? { ...g, active: true, wheelIds: Array.from(new Set([...(g.wheelIds || []), wheel.id])) }
+          : g
       );
     }
 
-    state = { ...state, wheels: [...state.wheels, wheel], wheelGroups: updatedGroups };
+    state = { ...state, wheels: [...state.wheels, wheel], wheelGroups: groups };
     saveToStorage();
     notify();
     if (state.online) _syncInBackground(() => api.createWheel(_wheelToApiPayload(wheel)));
@@ -299,18 +314,19 @@ export const store = {
 
   // ─── Trait CRUD ──────────────────────────────────────────
   addTrait(wheelId, label, rarity = 'common') {
+    if (!wheelId) return null;
     const trait = createTrait(label, rarity);
     state = {
       ...state,
       wheels: state.wheels.map(w =>
         w.id === wheelId
-          ? { ...w, traits: [...w.traits, trait] }
+          ? { ...w, traits: [...(w.traits || []), trait] }
           : w
       ),
     };
     saveToStorage();
     notify();
-    if (state.online) _syncInBackground(() => api.createTrait(wheelId, { id: trait.id, label: trait.label, rarity: trait.rarity }));
+    if (state.online) _syncInBackground(() => api.createTrait(wheelId, trait));
     return trait;
   },
 

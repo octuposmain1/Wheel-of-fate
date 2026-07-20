@@ -344,7 +344,7 @@ export class SpinWheel {
    * animation starts, then animates to land on that segment.
    * @returns {Promise<{trait, index}>}
    */
-  spin() {
+  spin(forcedWinnerIndex) {
     return new Promise((resolve) => {
       if (this.isSpinning) return;
       if (!this.wheel.traits?.length) return;
@@ -353,7 +353,9 @@ export class SpinWheel {
       playWhoosh();
 
       // 1. Pick winner before animation
-      let winnerIndex = weightedRandom(this.wheel.traits, this.tiers, this.options.compressWeights);
+      let winnerIndex = typeof forcedWinnerIndex === 'number' && forcedWinnerIndex >= 0 && forcedWinnerIndex < this.wheel.traits.length
+        ? forcedWinnerIndex
+        : weightedRandom(this.wheel.traits, this.tiers, this.options.compressWeights);
       if (winnerIndex === -1 || winnerIndex >= this.wheel.traits.length) {
         winnerIndex = 0;
       }

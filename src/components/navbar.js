@@ -90,7 +90,7 @@ export function renderNavbar(currentPath) {
 function _showAiSettingsModal() {
   const currentKey = localStorage.getItem('openai_api_key') ?? '';
   const currentUrl = localStorage.getItem('openai_api_url') ?? 'https://api.groq.com/openai/v1';
-  const currentModel = localStorage.getItem('openai_model') ?? 'llama-3.3-70b-versatile';
+  const currentModel = localStorage.getItem('openai_model') ?? 'llama-3.1-8b-instant';
 
   openModal({
     title: '🤖 AI Configuration Settings',
@@ -126,7 +126,7 @@ function _showAiSettingsModal() {
 
         <div>
           <label style="font-size:12px; color:rgba(255,255,255,0.5); display:block; margin-bottom:6px;">Model Name</label>
-          <input class="input" id="settings-api-model-input" type="text" placeholder="llama-3.3-70b-versatile" value="${currentModel}" style="width:100%;" />
+          <input class="input" id="settings-api-model-input" type="text" placeholder="llama-3.1-8b-instant" value="${currentModel}" style="width:100%;" />
         </div>
 
         <div style="display:flex; gap:12px; margin-top:8px;">
@@ -147,7 +147,7 @@ function _showAiSettingsModal() {
     const val = presetSelect.value;
     if (val === 'groq') {
       if (urlInput) urlInput.value = 'https://api.groq.com/openai/v1';
-      if (modelInput) modelInput.value = 'llama-3.3-70b-versatile';
+      if (modelInput) modelInput.value = 'llama-3.1-8b-instant';
       if (keyInput) keyInput.placeholder = 'gsk_...';
       if (keyLink) {
         keyLink.href = 'https://console.groq.com';
@@ -192,7 +192,7 @@ function _showAiSettingsModal() {
     }
 
     localStorage.setItem('openai_api_url', url || 'https://api.groq.com/openai/v1');
-    localStorage.setItem('openai_model', model || 'llama-3.3-70b-versatile');
+    localStorage.setItem('openai_model', model || 'llama-3.1-8b-instant');
 
     showToast('AI Settings saved successfully!', 'success');
     closeModal();

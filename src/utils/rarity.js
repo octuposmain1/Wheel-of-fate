@@ -334,11 +334,13 @@ export function proceduralFallbackPowerSystem(lockedTraits, tiers, wheels = []) 
   const energy = Math.max(5, Math.min(100, Math.round(calculatedCombatPower * 1.02 - (sumNegative * 0.2))));
   const tactics = Math.max(5, Math.min(100, Math.round(calculatedCombatPower * 0.8 + 15)));
 
-  const systems = ['Nen', 'Chakra', 'Mana Core', 'Stand Power', 'Ki Circuit', 'RPG Attributes'];
-  const classes = ['Enhancement', 'Conjuration', 'Elemental Affinity', 'Vanguard', 'Tactician', 'Assassin'];
+  // Derive power system and class name directly from character's actual traits (No fake/hallucinated anime systems)
+  const posTraits = lockedTraits.filter(lt => !isNegativeWheel(wheels.find(w => w.id === lt.wheelId)?.name ?? lt.wheelName));
+  const mainTrait = posTraits[0] ?? lockedTraits[0];
+  const mainLabel = mainTrait ? mainTrait.trait.label : 'Character Traits';
 
-  const systemName = systems[Math.abs(calculatedCombatPower) % systems.length];
-  const classOrType = classes[Math.abs(sumPositive) % classes.length];
+  const systemName = `${mainLabel} Resonance`;
+  const classOrType = posTraits.length > 1 ? `Multi-Trait Synergy (${posTraits.length} Traits)` : `Single Trait Master`;
 
   const ratingExpl = hasNegative
     ? `Weakness penalties (-${sumNegative} pts) bring total capacity to ${rawPower} PL, evaluating to ${calculatedCombatPower}/100 Potential.`

@@ -93,6 +93,11 @@ function _renderCharCard(char, wheels, tiers) {
     month: 'short', day: 'numeric', year: 'numeric',
   });
 
+  // Clean legacy hardcoded anime systems (Ki Circuit, Nen, Chakra) from old saved cards
+  if (char.powerSystem && (char.powerSystem.systemName?.includes('Ki Circuit') || char.powerSystem.systemName?.includes('Nen') || char.powerSystem.systemName?.includes('Chakra') || char.powerSystem.systemName?.includes('Stand Power'))) {
+    char.powerSystem = proceduralFallbackPowerSystem(char.traits, tiers, wheels);
+  }
+
   // Find highest rarity
   const highest = char.traits.reduce((best, lt) => {
     return getTierIntensity(tiers, lt.trait.rarity) > getTierIntensity(tiers, best?.trait?.rarity) ? lt : best;
@@ -389,7 +394,7 @@ Return a raw, unformatted JSON object matching this schema (do NOT wrap in markd
 }`;
 
         const apiUrl = localStorage.getItem('openai_api_url') || 'https://api.groq.com/openai/v1';
-        const modelName = localStorage.getItem('openai_model') || 'llama-3.3-70b-versatile';
+        const modelName = localStorage.getItem('openai_model') || 'llama-3.1-8b-instant';
 
         const requestBody = {
           model: modelName,

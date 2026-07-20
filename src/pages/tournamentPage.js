@@ -153,15 +153,14 @@ function generateLocalClashSegments(a, b, count, startIndex) {
     let winner = 'draw';
     let label = '';
     let combatLog = '';
+    let points = slot.points;
+    let isGlitched = false;
 
     let rollA = plGapA + bonusA + (hasCounterA ? 30 : 0) + (Math.random() * 10 - 5);
     let rollB = -plGapA + bonusB + (hasCounterB ? 30 : 0) + (Math.random() * 10 - 5);
 
-    // Consequence Tier Mechanics & Multi-Trait Combos:
     if (slot.tier === 'mythic') {
-      // Miracle One-Shot Wedge: ONLY triggers for underdog if they possess an explicit counter trait!
       if (plGapA > 30 && !hasCounterB) {
-        // High-PL character dominates the Miracle wedge unless underdog has a direct counter trait
         winner = 'a';
         label = `${comboA.label} Overpower`;
         combatLog = `${a.name}'s massive Raw Power (${computeRawPower(a)} PL) overpowers ${b.name} with ${comboA.summary}!`;
@@ -175,31 +174,36 @@ function generateLocalClashSegments(a, b, count, startIndex) {
         combatLog = `${a.name} unleashes immense power (${computeRawPower(a)} PL), crushing ${b.name} with ${comboA.summary}!`;
       }
     } else if (slot.tier === 'legendary') {
+      let rollA = plGapA + bonusA + (hasCounterA ? 30 : 0) + (Math.random() * 10 - 5);
+      let rollB = -plGapA + bonusB + (hasCounterB ? 30 : 0) + (Math.random() * 10 - 5);
       if (rollA >= rollB) {
         winner = 'a';
         label = `${comboA.label} Finisher`;
-        combatLog = `${a.name} combines ${comboA.summary} into an unstoppable finisher overwhelming ${b.name}!`;
+        combatLog = `${a.name} uses ${comboA.summary} into an unstoppable finisher overwhelming ${b.name}!`;
       } else {
         winner = 'b';
         label = `${comboB.label} Finisher`;
-        combatLog = `${b.name} combines ${comboB.summary} into an unstoppable finisher overwhelming ${a.name}!`;
+        combatLog = `${b.name} uses ${comboB.summary} into an unstoppable finisher overwhelming ${a.name}!`;
       }
     } else if (slot.tier === 'rare') {
+      let rollA = plGapA + bonusA + (Math.random() * 10 - 5);
+      let rollB = -plGapA + bonusB + (Math.random() * 10 - 5);
       if (rollA > rollB + 5) {
         winner = 'a';
         label = `${comboA.label} Combo`;
-        combatLog = `${a.name} combines ${comboA.summary} to outmaneuver ${b.name}!`;
+        combatLog = `${a.name} uses ${comboA.summary} to outmaneuver ${b.name}!`;
       } else if (rollB > rollA + 5) {
         winner = 'b';
         label = `${comboB.label} Combo`;
-        combatLog = `${b.name} combines ${comboB.summary} to outmaneuver ${a.name}!`;
+        combatLog = `${b.name} uses ${comboB.summary} to outmaneuver ${a.name}!`;
       } else {
         winner = 'draw';
         label = `Clash Stalemate`;
         combatLog = `A high-intensity exchange between ${a.name}'s ${ta.trait.label} and ${b.name}'s ${tb.trait.label} ends in a deadlock!`;
       }
     } else {
-      // Common wedges (Standard tactical exchange)
+      let rollA = plGapA + bonusA + (Math.random() * 10 - 5);
+      let rollB = -plGapA + bonusB + (Math.random() * 10 - 5);
       if (rollA > rollB + 5) {
         winner = 'a';
         label = `${ta.trait.label} Strike`;
@@ -220,7 +224,8 @@ function generateLocalClashSegments(a, b, count, startIndex) {
       label: label.substring(0, 18),
       rarity: slot.tier,
       winner,
-      points: slot.points,
+      points,
+      isGlitched,
       combatLog
     });
   }
@@ -266,14 +271,11 @@ async function _startFight(match, matchIndex, container) {
 Fighter A ("a"): "${a.name}" (Power Level: ${rawA} PL, Effective PL: ${effA}) with traits: ${traitSummaryA}. Backstory: ${a.backstory || ''}.
 Fighter B ("b"): "${b.name}" (Power Level: ${rawB} PL, Effective PL: ${effB}) with traits: ${traitSummaryB}. Backstory: ${b.backstory || ''}.
 
-Combat Balance & Power Level (PL) Rules:
-- ${leader} has higher Raw Power Level (${Math.max(rawA, rawB)} PL vs ${Math.min(rawA, rawB)} PL) and MUST WIN AT LEAST 6 OF THE 8 CLASH SEGMENTS.
-- High-tier trait abilities (Mythic/Legendary abilities like "Godkiller Strike", "Reality Bend", "Elder God Fragment") grant massive combat dominance.
-- Generate 4 Common segments (standard tactical hits, +8-12 pts).
-- Generate 2 Rare segments (signature ability plays, +15-18 pts).
-- Generate 1 Legendary segment (ultimate finisher, +25 pts).
-- Generate 1 Mythic segment (+40 pts). If the lower PL underdog has a specific counter trait, make the Mythic segment a Miracle Counter; otherwise let ${leader} execute an Overpower Strike!
-- DO NOT prefix labels with "A:" or "B:". Use clean action titles (e.g., "Shadowfire Combo", "Overpower Strike"). For Rare, Legendary, and Mythic segments, generate MULTI-TRAIT SYNERGY COMBOS fusing 2 or 3 traits together into a single interaction (e.g. combining "Shadow Step" + "Flame Blade" into a "Shadowfire Combo"). Explicitly state both traits in combatLog.
+STRICT COMBAT & TRAIT RULES:
+1. EXCLUSIVE TRAIT RULE: You MUST ONLY use the EXACT traits listed for each fighter above. NEVER invent, hallucinate, or insert unlisted abilities or martial art names (such as "Ki Circuit", "Venuzdonoa", "swift slash", "Shadowfire", etc.). If a fighter has only 1 trait listed, ALL of their combat actions MUST stem exclusively from that single trait.
+2. POWER LEVEL (PL) RULE: ${leader} has higher PL (${Math.max(rawA, rawB)} vs ${Math.min(rawA, rawB)}) and MUST win at least 6 of the 8 clash segments.
+3. MULTI-TRAIT SYNERGY: ONLY fuse multiple traits together if the fighter actually possesses more than 1 trait. If a fighter has only 1 trait, state that exact trait directly without inventing secondary abilities.
+4. STRICT NAMES RULE: You MUST refer to Fighter A ONLY as "${a.name}" and Fighter B ONLY as "${b.name}". NEVER make up or substitute third-party character names (such as "Aria", "Arthur", "Kael", etc.) in the combat logs or labels.
 
 Return a raw, unformatted JSON object matching this schema (do NOT wrap in markdown code blocks, do NOT include preamble):
 {
@@ -282,14 +284,14 @@ Return a raw, unformatted JSON object matching this schema (do NOT wrap in markd
       "label": "Clean interaction title (max 25 chars, DO NOT start with A: or B:)",
       "winner": "a" | "b" | "draw",
       "points": 8-40,
-      "combatLog": "An exciting, high-quality narrative sentence describing how they clashed, who countered who, and how their abilities/weaknesses interacted."
+      "combatLog": "An exciting, high-quality narrative sentence describing how they clashed and how their exact traits resolved."
     }
   ]
 }
 Generate exactly 8 segments total matching the consequence schema.`;
 
           const apiUrl = localStorage.getItem('openai_api_url') || 'https://api.groq.com/openai/v1';
-          const modelName = localStorage.getItem('openai_model') || 'llama-3.3-70b-versatile';
+          const modelName = localStorage.getItem('openai_model') || 'llama-3.1-8b-instant';
 
           const requestBody = {
             model: modelName,
@@ -453,11 +455,15 @@ function _initializeFightWheel(wheelTraits, a, b, match, container) {
   let scoreA = 0;
   let scoreB = 0;
 
+  const normalizedTraits = wheelTraits.map(t => {
+    return { ...t, points: Number(t.points) || 10 };
+  });
+
   const currentWheelObj = {
     id: 'fight-matchup-wheel',
     name: 'Dynamic Clash',
     icon: '⚔️',
-    traits: [...wheelTraits]
+    traits: normalizedTraits
   };
 
   const spinWheel = new SpinWheel(canvasContainer, currentWheelObj, {
@@ -492,11 +498,12 @@ function _initializeFightWheel(wheelTraits, a, b, match, container) {
       }
 
       const winningTrait = landResult.trait;
+      const pts = Number(winningTrait.points) || 0;
 
       if (winningTrait.winner === 'a') {
-        scoreA += (winningTrait.points || 10);
+        scoreA += pts;
       } else if (winningTrait.winner === 'b') {
-        scoreB += (winningTrait.points || 10);
+        scoreB += pts;
       }
 
       scoreAEl.textContent = scoreA;

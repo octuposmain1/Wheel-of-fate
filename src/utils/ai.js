@@ -65,7 +65,7 @@ export async function requireApiKey(onSuccess, onFreeFallback = null) {
     // Automatically set default provider to Groq if key starts with gsk_
     if (val.startsWith('gsk_')) {
       localStorage.setItem('openai_api_url', 'https://api.groq.com/openai/v1');
-      localStorage.setItem('openai_model', 'llama-3.3-70b-versatile');
+      localStorage.setItem('openai_model', 'llama-3.1-8b-instant');
     }
     
     showToast('API Key saved!', 'success');

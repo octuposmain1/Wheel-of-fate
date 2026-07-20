@@ -2,6 +2,8 @@
 // audio.js — Web Audio API Sound Effects
 // ============================================================
 
+import { getAudioFrequency, getTierIntensity, isDramaticTier } from './rarity.js';
+
 let ctx = null;
 
 function getCtx() {
@@ -35,18 +37,19 @@ export function playTick(angularVelocity = 1.0) {
 }
 
 /** Dramatic "gong" when a trait is locked */
-export function playLock(rarity = 'common') {
+export function playLock(rarity = 'common', tiers = []) {
   try {
     const ac = getCtx();
 
-    const rarityConfig = {
-      common:    { freq: 220, duration: 0.4, volume: 0.3 },
-      rare:      { freq: 330, duration: 0.6, volume: 0.4 },
-      legendary: { freq: 440, duration: 1.0, volume: 0.5 },
-      mythic:    { freq: 110, duration: 2.0, volume: 0.7 },
-    };
+    const intensity = getTierIntensity(tiers, rarity);
+    const dramatic = isDramaticTier(tiers, rarity);
+    const veryRare = intensity >= 0.9;
 
-    const cfg = rarityConfig[rarity] || rarityConfig.common;
+    const cfg = {
+      freq: getAudioFrequency(tiers, rarity),
+      duration: 0.4 + intensity * 1.6, // 0.4s (common) - 2.0s (rarest)
+      volume: 0.3 + intensity * 0.4, // 0.3 - 0.7
+    };
 
     // Main tone
     const osc = ac.createOscillator();
@@ -61,7 +64,7 @@ export function playLock(rarity = 'common') {
     osc.stop(ac.currentTime + cfg.duration);
 
     // Harmonic overtone for richness
-    if (rarity === 'legendary' || rarity === 'mythic') {
+    if (dramatic) {
       const osc2 = ac.createOscillator();
       const gain2 = ac.createGain();
       osc2.connect(gain2);
@@ -74,8 +77,8 @@ export function playLock(rarity = 'common') {
       osc2.stop(ac.currentTime + cfg.duration);
     }
 
-    // Mythic: add a deep boom
-    if (rarity === 'mythic') {
+    // The rarest tiers get a deep boom
+    if (veryRare) {
       const boom = ac.createOscillator();
       const bGain = ac.createGain();
       boom.connect(bGain);

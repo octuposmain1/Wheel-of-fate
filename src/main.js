@@ -3,11 +3,13 @@
 // ============================================================
 
 import { router } from './utils/router.js';
+import { store } from './utils/store.js';
 import { renderNavbar } from './components/navbar.js';
 import { renderHomePage } from './pages/homePage.js';
 import { renderBuilderPage, unmountBuilderPage } from './pages/builderPage.js';
 import { renderSpinPage, unmountSpinPage } from './pages/spinPage.js';
 import { renderCharactersPage, unmountCharactersPage } from './pages/charactersPage.js';
+import { renderTournamentPage, unmountTournamentPage } from './pages/tournamentPage.js';
 
 const pageRoot = document.getElementById('page-root');
 let currentPath = null;
@@ -18,6 +20,7 @@ const routes = {
   '/builder':    { render: renderBuilderPage,     unmount: unmountBuilderPage },
   '/spin':       { render: renderSpinPage,        unmount: unmountSpinPage },
   '/characters': { render: renderCharactersPage,  unmount: unmountCharactersPage },
+  '/tournament': { render: renderTournamentPage,  unmount: unmountTournamentPage },
 };
 
 // ─── Router Subscription ──────────────────────────────────────
@@ -54,7 +57,17 @@ router.subscribe((path) => {
 });
 
 // ─── Initialize ───────────────────────────────────────────────
-router.init();
+// Brief loading state so first paint doesn't flash default wheels that
+// are about to be overwritten once store.init() hears back from the API.
+pageRoot.innerHTML = `
+  <div class="page" style="text-align:center; padding:120px 20px;">
+    <div class="spinner" style="width:32px; height:32px; margin:0 auto;"></div>
+  </div>
+`;
+
+store.init().then(() => {
+  router.init();
+});
 
 // ─── Keyboard Shortcut: B = Builder, S = Spin, H = Home ──────
 document.addEventListener('keydown', (e) => {
@@ -63,6 +76,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 's' || e.key === 'S') router.navigate('/spin');
   if (e.key === 'h' || e.key === 'H') router.navigate('/');
   if (e.key === 'c' || e.key === 'C') router.navigate('/characters');
+  if (e.key === 't' || e.key === 'T') router.navigate('/tournament');
 });
 
 // ─── OpenAI Key Shortcut ──────────────────────────────────────
@@ -87,4 +101,4 @@ document.addEventListener('keydown', (e) => {
 });
 
 console.log('%c🎡 Wheel of Fate', 'font-size:20px; font-weight:bold; color:#00f5ff;');
-console.log('%cKeyboard shortcuts: H=Home, B=Builder, S=Spin, C=Characters, ?=Set API Key', 'color:#8a9ba8;');
+console.log('%cKeyboard shortcuts: H=Home, B=Builder, S=Spin, C=Characters, T=Tournament, ?=Set API Key', 'color:#8a9ba8;');

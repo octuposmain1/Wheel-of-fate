@@ -1,0 +1,4 @@
+node_modules/
+renders/
+.env
+remotion/public/audio/generated/

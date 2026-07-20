@@ -4,10 +4,11 @@
 
 import { router } from '../utils/router.js';
 import { store } from '../utils/store.js';
+import { computeRarityBarSegments, hexToRgba } from '../utils/rarity.js';
 
 export function renderHomePage(container) {
   const state = store.getState();
-  const { wheels, characters } = state;
+  const { wheels, characters, rarityTiers } = state;
 
   container.innerHTML = `
     <div class="page page-full">
@@ -40,7 +41,7 @@ export function renderHomePage(container) {
             <span class="stat-label">Characters Saved</span>
           </div>
           <div class="stat-card">
-            <span class="stat-number">4</span>
+            <span class="stat-number">${rarityTiers.length}</span>
             <span class="stat-label">Rarity Tiers</span>
           </div>
         </div>
@@ -68,7 +69,9 @@ export function renderHomePage(container) {
               <div class="wheel-preview-name">${escapeHtml(w.name)}</div>
               <div class="wheel-preview-count">${w.traits.length} traits</div>
               <div class="rarity-dist" aria-hidden="true">
-                ${buildRarityBar(w.traits)}
+                ${computeRarityBarSegments(rarityTiers, w.traits).map(seg =>
+                  `<div class="rarity-dist-segment" style="flex:${seg.fraction}; background:${seg.tier.color}; opacity:0.7;"></div>`
+                ).join('')}
               </div>
             </div>
           `).join('')}
@@ -89,20 +92,29 @@ export function renderHomePage(container) {
         <div style="margin-top: 48px;">
           <p class="section-title">🏆 Rarity Tiers</p>
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:16px;">
-            ${[
-              { key: 'common', label: 'Common', weight: '60%', desc: 'The foundation of every hero.' },
-              { key: 'rare', label: 'Rare', weight: '30%', desc: 'Something beyond ordinary.' },
-              { key: 'legendary', label: 'Legendary', weight: '9%', desc: 'The stuff of songs and tales.' },
-              { key: 'mythic', label: 'Mythic', weight: '1%', desc: 'A power that reshapes worlds.' },
-            ].map(r => `
-              <div class="card" style="padding:20px; border-color: rgba(var(--rarity-${r.key}-rgb, 138,155,168), 0.2);">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                  <span class="rarity-badge rarity-${r.key}">${r.label}</span>
-                  <span style="font-family:var(--font-display); font-size:18px; color:var(--rarity-${r.key});">${r.weight}</span>
-                </div>
-                <p style="font-size:12px; color:rgba(255,255,255,0.4);">${r.desc}</p>
-              </div>
-            `).join('')}
+            ${(() => {
+              const totalWeight = rarityTiers.reduce((s, t) => s + t.weight, 0) || 1;
+              const descriptions = [
+                'The foundation of every hero.',
+                'Something beyond ordinary.',
+                'The stuff of songs and tales.',
+                'A power that reshapes worlds.',
+              ];
+              const sorted = [...rarityTiers].sort((a, b) => b.weight - a.weight);
+              return sorted.map((t, i) => {
+                const bucket = Math.min(descriptions.length - 1, Math.floor((i / Math.max(1, sorted.length - 1)) * (descriptions.length - 1)));
+                const pct = Math.round((t.weight / totalWeight) * 100);
+                return `
+                  <div class="card" style="padding:20px; border-color:${hexToRgba(t.color, 0.2)};">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                      <span class="rarity-badge" style="background:${hexToRgba(t.color, 0.12)}; color:${t.color}; border:1px solid ${hexToRgba(t.color, 0.4)};"><span class="rarity-dot" style="background:${t.color};"></span> ${escapeHtml(t.label)}</span>
+                      <span style="font-family:var(--font-display); font-size:18px; color:${t.color};">${pct}%</span>
+                    </div>
+                    <p style="font-size:12px; color:rgba(255,255,255,0.4);">${descriptions[bucket]}</p>
+                  </div>
+                `;
+              }).join('');
+            })()}
           </div>
         </div>
       </div>
@@ -124,20 +136,6 @@ export function renderHomePage(container) {
       if (e.key === 'Enter') router.navigate('/builder');
     });
   });
-}
-
-function buildRarityBar(traits) {
-  if (!traits.length) return '';
-  const counts = { common: 0, rare: 0, legendary: 0, mythic: 0 };
-  traits.forEach(t => { counts[t.rarity] = (counts[t.rarity] || 0) + 1; });
-  const total = traits.length;
-  const colors = { common: '#8a9ba8', rare: '#00b4ff', legendary: '#ffd700', mythic: '#ff3366' };
-
-  return Object.entries(counts)
-    .filter(([, c]) => c > 0)
-    .map(([key, count]) =>
-      `<div class="rarity-dist-segment" style="flex:${count/total}; background:${colors[key]}; opacity:0.7;"></div>`
-    ).join('');
 }
 
 function escapeHtml(str) {

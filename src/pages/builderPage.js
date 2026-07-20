@@ -42,6 +42,8 @@ function _renderWithFocusPreserved(container, state) {
   let activeId = null;
   let activeTraitInputId = null;
   let activeRarityTierId = null;
+  let activeRarityColorId = null;
+  let activeRarityWeightId = null;
   let selectionStart = 0;
   let selectionEnd = 0;
 
@@ -49,6 +51,8 @@ function _renderWithFocusPreserved(container, state) {
     activeId = activeEl.id;
     activeTraitInputId = activeEl.dataset.traitInput;
     activeRarityTierId = activeEl.dataset.tierLabel;
+    activeRarityColorId = activeEl.dataset.tierColor;
+    activeRarityWeightId = activeEl.dataset.tierWeight;
     try {
       selectionStart = activeEl.selectionStart ?? 0;
       selectionEnd = activeEl.selectionEnd ?? 0;
@@ -75,6 +79,10 @@ function _renderWithFocusPreserved(container, state) {
     elToFocus = container.querySelector(`[data-trait-input="${activeTraitInputId}"]`);
   } else if (activeRarityTierId) {
     elToFocus = container.querySelector(`[data-tier-label="${activeRarityTierId}"]`);
+  } else if (activeRarityColorId) {
+    elToFocus = container.querySelector(`[data-tier-color="${activeRarityColorId}"]`);
+  } else if (activeRarityWeightId) {
+    elToFocus = container.querySelector(`[data-tier-weight="${activeRarityWeightId}"]`);
   } else if (activeId) {
     elToFocus = container.querySelector(`#${activeId}`);
   }
@@ -371,36 +379,39 @@ function _renderEditor(wheel, tiers) {
 
 // ─── Rarity Manager Events ──────────────────────────────────────
 function _bindRarityManagerEvents(container, state) {
-  container.querySelector('#toggle-rarity-manager')?.addEventListener('click', () => {
-    rarityManagerOpen = !rarityManagerOpen;
-    _updateBuilderPage(container);
-  });
+  const toggleBtn = container.querySelector('#toggle-rarity-manager');
+  if (toggleBtn) {
+    toggleBtn.onclick = () => {
+      rarityManagerOpen = !rarityManagerOpen;
+      _updateBuilderPage(container);
+    };
+  }
 
   container.querySelectorAll('[data-tier-color]').forEach(input => {
-    input.addEventListener('input', () => {
+    input.oninput = () => {
       store.updateRarityTier(input.dataset.tierColor, { color: input.value });
-    });
+    };
   });
 
   container.querySelectorAll('[data-tier-label]').forEach(input => {
     let debounceTimer;
-    input.addEventListener('input', () => {
+    input.oninput = () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         store.updateRarityTier(input.dataset.tierLabel, { label: input.value });
       }, 400);
-    });
+    };
   });
 
   container.querySelectorAll('[data-tier-weight]').forEach(input => {
-    input.addEventListener('change', () => {
+    input.onchange = () => {
       const weight = Math.max(0.1, parseFloat(input.value) || 0.1);
       store.updateRarityTier(input.dataset.tierWeight, { weight });
-    });
+    };
   });
 
   container.querySelectorAll('[data-delete-tier]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.onclick = () => {
       const tier = state.rarityTiers.find(t => t.id === btn.dataset.deleteTier);
       if (!tier) return;
       const inUseCount = parseInt(btn.dataset.inuseCount, 10) || 0;
@@ -411,77 +422,89 @@ function _bindRarityManagerEvents(container, state) {
         store.deleteRarityTier(tier.id);
         showToast(`Deleted rarity tier "${tier.label}"`, 'info');
       }
-    });
+    };
   });
 
+  const addTierBtn = container.querySelector('#add-tier-btn');
   const newTierInput = container.querySelector('#new-tier-label');
-  container.querySelector('#add-tier-btn')?.addEventListener('click', () => {
-    const label = newTierInput?.value.trim();
-    if (!label) { newTierInput?.focus(); return; }
-    const index = state.rarityTiers.length % NEW_TIER_COLORS.length;
-    const color = NEW_TIER_COLORS[index];
-    store.addRarityTier({ label, weight: 10, color });
-    if (newTierInput) newTierInput.value = '';
-    showToast(`Added rarity tier "${label}"`, 'success');
-  });
-  newTierInput?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') container.querySelector('#add-tier-btn')?.click();
-  });
+  if (addTierBtn) {
+    addTierBtn.onclick = () => {
+      const label = newTierInput?.value.trim();
+      if (!label) { newTierInput?.focus(); return; }
+      const index = state.rarityTiers.length % NEW_TIER_COLORS.length;
+      const color = NEW_TIER_COLORS[index];
+      store.addRarityTier({ label, weight: 10, color });
+      if (newTierInput) newTierInput.value = '';
+      showToast(`Added rarity tier "${label}"`, 'success');
+    };
+  }
+
+  if (newTierInput) {
+    newTierInput.onkeydown = (e) => {
+      if (e.key === 'Enter') container.querySelector('#add-tier-btn')?.click();
+    };
+  }
 }
 
 // ─── Bind Events ───────────────────────────────────────────────
 function _bindEvents(container, state) {
   const wheel = state.wheels.find(w => w.id === selectedWheelId);
 
+  _bindRarityManagerEvents(container, state);
+
   // Search inputs (Direct DOM filtering to prevent focus loss)
   const wheelSearchInput = container.querySelector('#wheel-search-input');
-  wheelSearchInput?.addEventListener('input', () => {
-    wheelSearchQuery = wheelSearchInput.value;
-    const q = wheelSearchQuery.toLowerCase().trim();
-    container.querySelectorAll('.wheel-list-item').forEach(item => {
-      const name = item.querySelector('.wheel-list-item-name')?.textContent.toLowerCase() || '';
-      item.style.display = name.includes(q) ? 'flex' : 'none';
-    });
-  });
+  if (wheelSearchInput) {
+    wheelSearchInput.oninput = () => {
+      wheelSearchQuery = wheelSearchInput.value;
+      const q = wheelSearchQuery.toLowerCase().trim();
+      container.querySelectorAll('.wheel-list-item').forEach(item => {
+        const name = item.querySelector('.wheel-list-item-name')?.textContent.toLowerCase() || '';
+        item.style.display = name.includes(q) ? 'flex' : 'none';
+      });
+    };
+  }
 
   const folderSearchInput = container.querySelector('#folder-search-input');
-  folderSearchInput?.addEventListener('input', () => {
-    folderSearchQuery = folderSearchInput.value;
-    const q = folderSearchQuery.toLowerCase().trim();
-    container.querySelectorAll('[data-select-group]').forEach(pill => {
-      const name = pill.querySelector('strong')?.textContent.toLowerCase() || '';
-      pill.style.display = name.includes(q) ? 'flex' : 'none';
-    });
-  });
+  if (folderSearchInput) {
+    folderSearchInput.oninput = () => {
+      folderSearchQuery = folderSearchInput.value;
+      const q = folderSearchQuery.toLowerCase().trim();
+      container.querySelectorAll('[data-select-group]').forEach(pill => {
+        const name = pill.querySelector('strong')?.textContent.toLowerCase() || '';
+        pill.style.display = name.includes(q) ? 'flex' : 'none';
+      });
+    };
+  }
 
   // Folder toggling & management
   container.querySelectorAll('[data-select-group]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.onclick = (e) => {
       if (e.target.closest('[data-toggle-group]') || e.target.closest('[data-duplicate-group]') || e.target.closest('[data-delete-group]')) return;
       const groupId = btn.dataset.selectGroup;
       store.selectSingleActiveGroup(groupId);
-    });
+    };
   });
 
   container.querySelectorAll('[data-toggle-group]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.onclick = (e) => {
       e.stopPropagation();
       const groupId = btn.dataset.toggleGroup;
       store.toggleWheelGroupActive(groupId);
-    });
+    };
   });
 
   container.querySelectorAll('[data-duplicate-group]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.onclick = (e) => {
       e.stopPropagation();
       const groupId = btn.dataset.duplicateGroup;
       const copy = store.duplicateWheelGroup(groupId);
       if (copy) showToast(`Duplicated folder as "${copy.name}"`, 'success');
-    });
+    };
   });
 
   container.querySelectorAll('[data-delete-group]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.onclick = (e) => {
       e.stopPropagation();
       const groupId = btn.dataset.deleteGroup;
       const group = (state.wheelGroups || []).find(g => g.id === groupId);
@@ -489,43 +512,46 @@ function _bindEvents(container, state) {
         store.deleteWheelGroup(groupId);
         showToast(`Deleted folder "${group.name}"`, 'info');
       }
-    });
+    };
   });
 
-  container.querySelector('#create-group-btn')?.addEventListener('click', () => {
-    _showCreateFolderModal(container, state);
-  });
+  const createGroupBtn = container.querySelector('#create-group-btn');
+  if (createGroupBtn) {
+    createGroupBtn.onclick = () => {
+      _showCreateFolderModal(container, state);
+    };
+  }
 
   // Select wheel
   container.querySelectorAll('[data-select-wheel]').forEach(el => {
-    el.addEventListener('click', (e) => {
+    el.onclick = (e) => {
       if (e.target.closest('[data-delete-wheel]') || e.target.closest('[data-move-wheel-up]') || e.target.closest('[data-move-wheel-down]')) return;
       selectedWheelId = el.dataset.selectWheel;
       _updateBuilderPage(container);
-    });
-    el.addEventListener('keydown', (e) => {
+    };
+    el.onkeydown = (e) => {
       if (e.key === 'Enter' && !e.target.closest('[data-delete-wheel]')) {
         selectedWheelId = el.dataset.selectWheel;
         _updateBuilderPage(container);
       }
-    });
+    };
   });
 
   // Move wheel up/down
   container.querySelectorAll('[data-move-wheel-up]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.onclick = (e) => {
       e.stopPropagation();
       const idx = parseInt(btn.dataset.moveWheelUp, 10);
       store.reorderWheels(idx, idx - 1);
-    });
+    };
   });
 
   container.querySelectorAll('[data-move-wheel-down]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.onclick = (e) => {
       e.stopPropagation();
       const idx = parseInt(btn.dataset.moveWheelDown, 10);
       store.reorderWheels(idx, idx + 1);
-    });
+    };
   });
 
   // Drag and drop HTML5 reordering
@@ -557,18 +583,20 @@ function _bindEvents(container, state) {
   });
 
   // Add wheel
-  container.querySelector('#add-wheel-btn')?.addEventListener('click', () => {
-    _showAddWheelModal();
-  });
+  const addWheelBtn = container.querySelector('#add-wheel-btn');
+  if (addWheelBtn) {
+    addWheelBtn.onclick = () => _showAddWheelModal();
+  }
 
   // AI Generate wheel
-  container.querySelector('#ai-generate-wheel-btn')?.addEventListener('click', () => {
-    _showAiGenerateWheelModal(container);
-  });
+  const aiGenBtn = container.querySelector('#ai-generate-wheel-btn');
+  if (aiGenBtn) {
+    aiGenBtn.onclick = () => _showAiGenerateWheelModal(container);
+  }
 
   // Delete wheel
   container.querySelectorAll('[data-delete-wheel]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.onclick = (e) => {
       e.stopPropagation();
       const wid = btn.dataset.deleteWheel;
       const wName = state.wheels.find(w => w.id === wid)?.name ?? 'this wheel';
@@ -580,58 +608,65 @@ function _bindEvents(container, state) {
         }
         showToast(`Deleted "${wName}"`, 'info');
       }
-    });
+    };
   });
 
   if (!wheel) return;
 
   // Wheel name edit
   const nameInput = container.querySelector('#wheel-name-input');
-  nameInput?.addEventListener('input', () => {
-    store.updateWheel(wheel.id, { name: nameInput.value });
-  });
+  if (nameInput) {
+    nameInput.oninput = () => {
+      store.updateWheel(wheel.id, { name: nameInput.value });
+    };
+  }
 
   // Icon picker
-  container.querySelector('#wheel-icon-picker')?.addEventListener('click', () => {
-    _showIconPicker(wheel.id);
-  });
+  const iconPicker = container.querySelector('#wheel-icon-picker');
+  if (iconPicker) {
+    iconPicker.onclick = () => _showIconPicker(wheel.id);
+  }
 
   // AI Regen traits
-  container.querySelector('#regen-wheel-btn')?.addEventListener('click', () => {
-    _showAiRegenTraitsModal(container, wheel);
-  });
+  const regenBtn = container.querySelector('#regen-wheel-btn');
+  if (regenBtn) {
+    regenBtn.onclick = () => _showAiRegenTraitsModal(container, wheel);
+  }
 
   // Revert traits
-  container.querySelector('#revert-wheel-btn')?.addEventListener('click', () => {
-    if (confirm(`Revert wheel "${wheel.name}" to its previous traits before regeneration?`)) {
-      store.revertWheelTraits(wheel.id);
-      showToast(`Reverted "${wheel.name}" traits`, 'success');
-    }
-  });
+  const revertBtn = container.querySelector('#revert-wheel-btn');
+  if (revertBtn) {
+    revertBtn.onclick = () => {
+      if (confirm(`Revert wheel "${wheel.name}" to its previous traits before regeneration?`)) {
+        store.revertWheelTraits(wheel.id);
+        showToast(`Reverted "${wheel.name}" traits`, 'success');
+      }
+    };
+  }
 
   // Trait label edit (debounced)
   container.querySelectorAll('[data-trait-input]').forEach(input => {
     let debounceTimer;
-    input.addEventListener('input', () => {
+    input.oninput = () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         store.updateTrait(wheel.id, input.dataset.traitInput, { label: input.value });
       }, 400);
-    });
+    };
   });
 
   // Trait rarity change
   container.querySelectorAll('[data-trait-rarity]').forEach(sel => {
-    sel.addEventListener('change', () => {
+    sel.onchange = () => {
       store.updateTrait(wheel.id, sel.dataset.traitRarity, { rarity: sel.value });
-    });
+    };
   });
 
   // Delete trait
   container.querySelectorAll('[data-delete-trait]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.onclick = () => {
       store.deleteTrait(wheel.id, btn.dataset.deleteTrait);
-    });
+    };
   });
 
   // Add trait
@@ -649,25 +684,33 @@ function _bindEvents(container, state) {
     showToast(`Added trait: "${label}"`, 'success');
   };
 
-  addTraitBtn?.addEventListener('click', doAddTrait);
-  addTraitInput?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') doAddTrait();
-  });
+  if (addTraitBtn) addTraitBtn.onclick = doAddTrait;
+  if (addTraitInput) {
+    addTraitInput.onkeydown = (e) => {
+      if (e.key === 'Enter') doAddTrait();
+    };
+  }
 
   // Sort by rarity (rarest first)
-  container.querySelector('#sort-by-rarity-btn')?.addEventListener('click', () => {
-    const tiers = store.getState().rarityTiers;
-    const sorted = [...wheel.traits].sort(
-      (a, b) => getTierIntensity(tiers, b.rarity) - getTierIntensity(tiers, a.rarity)
-    );
-    store.reorderTraits(wheel.id, sorted);
-  });
+  const sortByRarityBtn = container.querySelector('#sort-by-rarity-btn');
+  if (sortByRarityBtn) {
+    sortByRarityBtn.onclick = () => {
+      const tiers = store.getState().rarityTiers;
+      const sorted = [...wheel.traits].sort(
+        (a, b) => getTierIntensity(tiers, b.rarity) - getTierIntensity(tiers, a.rarity)
+      );
+      store.reorderTraits(wheel.id, sorted);
+    };
+  }
 
   // Shuffle
-  container.querySelector('#shuffle-traits-btn')?.addEventListener('click', () => {
-    const shuffled = [...wheel.traits].sort(() => Math.random() - 0.5);
-    store.reorderTraits(wheel.id, shuffled);
-  });
+  const shuffleBtn = container.querySelector('#shuffle-traits-btn');
+  if (shuffleBtn) {
+    shuffleBtn.onclick = () => {
+      const shuffled = [...wheel.traits].sort(() => Math.random() - 0.5);
+      store.reorderTraits(wheel.id, shuffled);
+    };
+  }
 
   // Clear all
   container.querySelector('#clear-traits-btn')?.addEventListener('click', () => {

@@ -165,6 +165,40 @@ body::before {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  overflow-x: auto;
+  white-space: nowrap;
+  max-width: 100%;
+  padding-bottom: 2px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+  -webkit-overflow-scrolling: touch;
+}
+
+.navbar-nav::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    padding: 0 var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .navbar-brand {
+    flex-shrink: 0;
+  }
+
+  .navbar-title {
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  .nav-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
 }
 
 .nav-btn {

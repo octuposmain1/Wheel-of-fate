@@ -568,11 +568,10 @@ function _initializeFightWheel(wheelTraits, a, b, match, container) {
         landedTrait.disabled = true;
       }
 
-      // Check if it's a fatal/decisive blow
+      // Check if it's a true fatal blow (only explicit mythic miracle slices or execution keywords)
       const isFatalBlow = winningTrait.winner !== 'draw' && (
         winningTrait.rarity === 'mythic' ||
-        winningTrait.rarity === 'legendary' ||
-        /kill|die|dead|slain|defeat|fatal|finish|KO|victory/i.test(winningTrait.combatLog || winningTrait.label)
+        /fatal execution|instant kill|obliterate|absolute destruction/i.test(winningTrait.combatLog || winningTrait.label)
       );
 
       // Check if any round so far was legendary/mythic

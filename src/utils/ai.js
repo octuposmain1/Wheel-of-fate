@@ -166,28 +166,75 @@ export function cleanAndParseJson(str) {
  * Dispatches an AI chat completion request through the local server proxy.
  */
 export async function callAiChat(apiUrl, apiKey, requestBody) {
-  const proxyUrl = '/api/ai/chat';
-  const response = await fetch(proxyUrl, {
+  const targetUrl = getChatCompletionsUrl(apiUrl);
+  let finalKey = (apiKey || '').trim() || (localStorage.getItem('openai_api_key') || '').trim();
+
+  // 1. Try local server proxy first (for local Express environment)
+  try {
+    const proxyUrl = '/api/ai/chat';
+    const response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: targetUrl,
+        apiKey: finalKey,
+        requestBody
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json().catch(() => ({}));
+      if (data.choices?.[0]?.message?.content) {
+        return data.choices[0].message.content;
+      }
+      if (data.error) {
+        throw new Error(typeof data.error === 'string' ? data.error : (data.error.message || 'AI API Error'));
+      }
+    } else if (response.status !== 404 && response.status !== 405) {
+      // Upstream server proxy error (e.g., 400 invalid request or 401 invalid key from Groq/OpenAI)
+      const data = await response.json().catch(() => ({}));
+      let msg = data.error?.message || data.error || data.message || `API returned status ${response.status}`;
+      throw new Error(msg);
+    }
+  } catch (err) {
+    // If it was a real API error from upstream (e.g. invalid key), rethrow it
+    if (err.message && !err.message.includes('405') && !err.message.includes('404') && !err.message.includes('Failed to fetch')) {
+      throw err;
+    }
+    // Otherwise fallback to direct client-side fetch below
+  }
+
+  // 2. Direct client-side fetch fallback (for static hosts like GitHub Pages)
+  if (!finalKey) {
+    throw new Error('API key is required for AI generation.');
+  }
+
+  const directHeaders = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${finalKey}`
+  };
+  if (targetUrl.includes('openrouter.ai')) {
+    directHeaders['HTTP-Referer'] = window.location.href;
+    directHeaders['X-Title'] = 'Wheel of Fate';
+  }
+
+  const directRes = await fetch(targetUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      url: getChatCompletionsUrl(apiUrl),
-      apiKey,
-      requestBody
-    })
+    headers: directHeaders,
+    body: JSON.stringify(requestBody)
   });
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.error) {
+  const directData = await directRes.json().catch(() => ({}));
+  if (!directRes.ok || directData.error) {
     let msg = 'AI request failed';
-    if (typeof data.error === 'string') msg = data.error;
-    else if (data.error?.message) msg = data.error.message;
-    else if (data.message) msg = data.message;
-    else msg = `API returned status ${response.status}`;
+    if (typeof directData.error === 'string') msg = directData.error;
+    else if (directData.error?.message) msg = directData.error.message;
+    else if (directData.message) msg = directData.message;
+    else msg = `API returned status ${directRes.status}`;
     throw new Error(msg);
   }
 
-  return data.choices?.[0]?.message?.content || '{}';
+  return directData.choices?.[0]?.message?.content || '{}';
 }

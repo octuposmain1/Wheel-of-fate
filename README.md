@@ -1,6 +1,11 @@
 # 🎡 Wheel of Fate ⚔️ — AI RPG Character Generator & Video Export
 
+[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-Try_It_Now-00F0FF?style=for-the-badge&logo=githubpages&logoColor=black)](https://octuposmain1.github.io/Wheel-of-fate/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-FFD700.svg?style=for-the-badge)](LICENSE)
+
 > 🚧 **WORK IN PROGRESS (WIP)** 🚧
+> 
+> 🌐 **Live Web Application:** [https://octuposmain1.github.io/Wheel-of-fate/](https://octuposmain1.github.io/Wheel-of-fate/)
 >
 > **Wheel of Fate** is an interactive, full-stack RPG character generator powered by weighted rarity physics, AI narrative & stat evaluation, interactive tournament clash wheels, and programmatic video rendering for YouTube Shorts / TikTok.
 

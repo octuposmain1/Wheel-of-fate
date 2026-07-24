@@ -1,5 +1,7 @@
 # 🎡 Wheel of Fate ⚔️ — AI RPG Character Generator & Video Export
 
+> 🚧 **WORK IN PROGRESS (WIP)** 🚧
+>
 > **Wheel of Fate** is an interactive, full-stack RPG character generator powered by weighted rarity physics, AI narrative & stat evaluation, interactive tournament clash wheels, and programmatic video rendering for YouTube Shorts / TikTok.
 
 ---
